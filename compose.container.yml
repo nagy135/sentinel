@@ -1,0 +1,17 @@
+services:
+  sentinel:
+    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:latest}
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${SENTINEL_PORT:-3000}:3000"
+    environment:
+      PORT: "3000"
+      SENTINEL_HOST: "0.0.0.0"
+      SENTINEL_INTERVAL_MS: ${SENTINEL_INTERVAL_MS:-5000}
+      SENTINEL_DB_PATH: /data/sentinel.sqlite
+    volumes:
+      - sentinel_data:/data
+
+volumes:
+  sentinel_data:

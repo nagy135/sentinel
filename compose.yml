@@ -1,0 +1,30 @@
+# Linux host monitoring. Use compose.container.yml for an ordinary container.
+services:
+  sentinel:
+    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:latest}
+    restart: unless-stopped
+    init: true
+    network_mode: host
+    pid: host
+    uts: host
+    environment:
+      PORT: ${SENTINEL_PORT:-3000}
+      SENTINEL_HOST: "127.0.0.1"
+      SENTINEL_HOST_ROOT: /host
+      SENTINEL_INTERVAL_MS: ${SENTINEL_INTERVAL_MS:-5000}
+      SENTINEL_DB_PATH: /data/sentinel.sqlite
+    volumes:
+      - sentinel_data:/data
+      - type: bind
+        source: /
+        target: /host
+        read_only: true
+        bind:
+          propagation: rslave
+      - type: bind
+        source: /sys
+        target: /sys
+        read_only: true
+
+volumes:
+  sentinel_data:

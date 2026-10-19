@@ -2,6 +2,7 @@ import si from "systeminformation";
 import { loadavg, platform, uptime } from "node:os";
 import { readConfig } from "./config.server";
 import { MetricsStore } from "./store.server";
+import { hostDisks, readHostIdentity } from "./host.server";
 import type {
   DashboardData,
   HostInfo,
@@ -41,17 +42,22 @@ export class Collector {
       throw new Error(
         `Unsupported platform: ${os}. Sentinel supports Linux and macOS.`,
       );
+    if (this.config.hostRoot && os !== "linux")
+      throw new Error("SENTINEL_HOST_ROOT is supported only on Linux.");
     this.running = true;
     const [system, info, cpu] = await Promise.all([
       si.system(),
       si.osInfo(),
       si.cpu(),
     ]);
+    const identity = this.config.hostRoot
+      ? await readHostIdentity(this.config.hostRoot)
+      : null;
     this.host = {
       hostname: info.hostname,
       platform: os,
-      os: info.distro,
-      release: info.release,
+      os: identity?.os ?? info.distro,
+      release: identity?.release ?? info.release,
       kernel: info.kernel,
       arch: info.arch,
       cpu: `${cpu.manufacturer} ${cpu.brand}`.trim(),
@@ -89,7 +95,7 @@ export class Collector {
       ]);
     const [one, five, fifteen] = loadavg();
     const timestamp = Date.now();
-    const disks = (filesystems ?? [])
+    let disks = (filesystems ?? [])
       .filter(
         (disk) =>
           disk.size > 0 &&
@@ -104,6 +110,12 @@ export class Collector {
         available: disk.available,
         percent: Math.min(100, Math.max(0, disk.use)),
       }));
+    if (this.config.hostRoot) {
+      disks =
+        (await read("Host volumes", () =>
+          hostDisks(disks, this.config.hostRoot!),
+        )) ?? [];
+    }
     // APFS System and Data volumes share a container; never sum their capacities.
     const mainDisk =
       disks.find((d) => d.mount === "/System/Volumes/Data") ??

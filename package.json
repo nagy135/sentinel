@@ -8,7 +8,9 @@
     "start": "bun run scripts/start.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
-    "test:production": "bun run build && SENTINEL_TEST_PRODUCTION=1 bun test"
+    "test:production": "bun run build && SENTINEL_TEST_PRODUCTION=1 bun test",
+    "test:docker": "bun run scripts/test-docker.ts",
+    "test:docker:host": "SENTINEL_TEST_HOST=1 bun run scripts/test-docker.ts"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.45",

@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+dist
+.tanstack
+.output
+data
+.env
+.env.*
+!.env.example
+**/*.sqlite
+**/*.sqlite-shm
+**/*.sqlite-wal
+.DS_Store

@@ -35,7 +35,7 @@ try {
   await collector.start();
   if (!shuttingDown) {
     server = Bun.serve({
-      hostname: "127.0.0.1",
+      hostname: collector.config.hostname,
       port: collector.config.port,
       async fetch(request) {
         let pathname: string;
@@ -70,7 +70,7 @@ try {
       },
     });
     console.log(
-      `[sentinel] ${collector.host?.hostname} · http://127.0.0.1:${server.port}`,
+      `[sentinel] ${collector.host?.hostname} · http://${collector.config.hostname}:${server.port}`,
     );
     console.log(
       `[sentinel] Sampling every ${collector.config.intervalMs / 1000}s · SQLite: ${collector.config.dbPath}`,
