@@ -43,12 +43,18 @@ Restart the dev command after changing environment settings. Source edits to the
 
 - Automatic hostname, OS/release, kernel, architecture, hardware, and CPU detection.
 - Total and per-core CPU activity; active RAM, total RAM, and swap use.
+- System load averages over 1, 5, and 15 minutes, plus CPU temperature when a readable sensor is available.
 - Mounted filesystem usage, with the primary volume shown in the overview.
 - Receive/send throughput and individual active non-loopback network interfaces.
 - System uptime and collector status.
-- Interactive CPU, memory, storage, and network history charts, from 15 minutes to all history.
+- Interactive CPU, memory, load, temperature, storage, and network history charts, from 15 minutes to all history.
 - Custom start/end dates and drag-to-zoom on every graph, synchronized across all graphs. Fixed ranges keep their exact bounds while collection continues.
 - System, Light, and Dark appearance options; defaults to System. The preference is saved in the browser, and System follows OS appearance changes.
+- **Edit dashboard** reveals a remove button and drag handle for every block. **Add blocks** opens a sidebar containing hidden blocks; click to append one or drag its handle to a highlighted slot. The sidebar shows an empty state when all blocks are present. Arrow keys on a focused dashboard handle also move a block. **Done editing** hides the controls.
+
+Block order and visibility are saved in this browser's local storage. Removing a block never stops its collection or deletes history. A new browser starts with all blocks visible.
+
+Load averages are the OS-reported number of runnable or waiting tasks, not CPU percentages or values normalized by core count. The graph shows the host's logical core count for context. Temperature is reported in Celsius through `systeminformation.cpuTemperature()`. Sensor availability depends on the host; Raspberry Pi/Linux thermal sensors can be read directly, while macOS may require one of systeminformation's optional native sensor helpers. Sentinel does not install privileged helpers automatically. Unsupported sensors show **Unavailable**, and old history stays empty for newly added metrics.
 
 The first network rate is unavailable until two counter samples exist. Counters that reset also wait for a fresh interval. Missing readings are shown as unavailable rather than zero. Network totals include virtual interfaces and bridges, so forwarded traffic can appear on more than one interface.
 
@@ -85,6 +91,6 @@ The first build or dev run generates TanStack Router's `src/routeTree.gen.ts`. T
 - `src/components/` contains the dashboard, Recharts graphs, and theme handling.
 - `src/components/ui/` contains shadcn/ui components; `components.json` configures the CLI.
 
-Platform support uses the operating system where Bun runs. Inside a Linux container, metrics describe the container's visible environment, not the macOS host. No root privileges or optional hardware tools are needed for the initial metric set; availability still depends on the host's permissions and utilities.
+Platform support uses the operating system where Bun runs. Inside a Linux container, metrics describe the container's visible environment, not the macOS host. Core metrics need no root privileges; hardware temperature availability depends on the host's sensors, permissions, and optional utilities.
 
 Implementation references: [TanStack Start setup](https://tanstack.com/start/latest/docs/framework/react/build-from-scratch), [systeminformation](https://systeminformation.io), [Bun SQLite](https://bun.sh/docs/runtime/sqlite), and [shadcn/ui](https://ui.shadcn.com).

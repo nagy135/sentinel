@@ -23,15 +23,27 @@ export class MetricsStore {
         snapshot TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS samples_timestamp ON samples(timestamp);
-      PRAGMA user_version = 1;
     `);
+    // Upgrade existing databases in place; old readings remain unknown, never zero.
+    const columns = new Set(
+      this.db
+        .query<{ name: string }, []>("PRAGMA table_info(samples)")
+        .all()
+        .map((c) => c.name),
+    );
+    this.db.transaction(() => {
+      for (const name of ["load1", "load5", "load15", "temperature"])
+        if (!columns.has(name))
+          this.db.exec(`ALTER TABLE samples ADD COLUMN ${name} REAL`);
+      this.db.exec("PRAGMA user_version = 2");
+    })();
   }
 
   insert(sample: Sample) {
     this.db
       .query(
-        `INSERT INTO samples (timestamp, cpu, memory, disk, rx, tx, snapshot)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO samples (timestamp, cpu, memory, disk, rx, tx, snapshot, load1, load5, load15, temperature)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         sample.timestamp,
@@ -41,6 +53,10 @@ export class MetricsStore {
         sample.rx,
         sample.tx,
         JSON.stringify(sample),
+        sample.load?.one ?? null,
+        sample.load?.five ?? null,
+        sample.load?.fifteen ?? null,
+        sample.temperature ?? null,
       );
   }
 
@@ -50,7 +66,13 @@ export class MetricsStore {
         "SELECT snapshot FROM samples ORDER BY timestamp DESC, id DESC LIMIT 1",
       )
       .get();
-    return row ? (JSON.parse(row.snapshot) as Sample) : null;
+    return row
+      ? ({
+          load: null,
+          temperature: null,
+          ...JSON.parse(row.snapshot),
+        } as Sample)
+      : null;
   }
 
   summary() {
@@ -94,7 +116,9 @@ export class MetricsStore {
         `
       SELECT CAST(AVG(timestamp) AS INTEGER) AS timestamp,
         AVG(cpu) AS cpu, AVG(memory) AS memory, AVG(disk) AS disk,
-        AVG(rx) AS rx, AVG(tx) AS tx
+        AVG(rx) AS rx, AVG(tx) AS tx,
+        AVG(load1) AS load1, AVG(load5) AS load5, AVG(load15) AS load15,
+        AVG(temperature) AS temperature
       FROM samples WHERE timestamp >= ? AND timestamp <= ?
       GROUP BY CAST(timestamp / ? AS INTEGER) ORDER BY timestamp
     `,

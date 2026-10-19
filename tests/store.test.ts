@@ -3,11 +3,14 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MetricsStore } from "../src/server/store.server";
+import { Database } from "bun:sqlite";
 import type { Sample } from "../src/lib/metrics";
 
 const sample = (timestamp: number, cpu: number | null = 25): Sample => ({
   timestamp,
   cpu,
+  load: { one: 1, five: 0.8, fifteen: 0.6 },
+  temperature: 45,
   uptime: 100,
   cores: [cpu],
   memory: { total: 1024, used: 512, percent: 50, swapUsed: 0, swapTotal: 0 },
@@ -32,6 +35,70 @@ const memoryStore = () => {
 };
 
 describe("SQLite metric history", () => {
+  test("upgrades a version 1 database without losing snapshots or inventing sensor history", () => {
+    const directory = mkdtempSync(join(tmpdir(), "sentinel-upgrade-"));
+    directories.push(directory);
+    const path = join(directory, "history.sqlite");
+    const old = new Database(path);
+    old.exec(`CREATE TABLE samples (id INTEGER PRIMARY KEY, timestamp INTEGER NOT NULL,
+      cpu REAL, memory REAL, disk REAL, rx REAL, tx REAL, snapshot TEXT NOT NULL);
+      PRAGMA user_version = 1;`);
+    const { load, temperature, ...legacy } = sample(1000);
+    old
+      .query("INSERT INTO samples (timestamp, cpu, snapshot) VALUES (?, ?, ?)")
+      .run(1000, 25, JSON.stringify(legacy));
+    old.close();
+    const store = new MetricsStore(path);
+    expect(store.latest()).toMatchObject({
+      timestamp: 1000,
+      load: null,
+      temperature: null,
+    });
+    store.insert(sample(6000));
+    const history = store.history("all", 6000);
+    expect(history[0]).toMatchObject({
+      timestamp: 1000,
+      load1: null,
+      load5: null,
+      load15: null,
+      temperature: null,
+    });
+    expect(history[1]).toMatchObject({
+      timestamp: 6000,
+      load1: 1,
+      load5: 0.8,
+      load15: 0.6,
+      temperature: 45,
+    });
+    store.close();
+    // The migration is safe to repeat after a restart.
+    const reopened = new MetricsStore(path);
+    stores.push(reopened);
+    expect(reopened.summary().count).toBe(2);
+    expect(reopened.latest()?.load).toEqual(load);
+    expect(reopened.latest()?.temperature).toBe(temperature);
+  });
+
+  test("averages load and temperature in a bucket and ignores unavailable sensors", () => {
+    const store = memoryStore();
+    store.insert({ ...sample(100), load: null, temperature: null });
+    store.insert({
+      ...sample(200),
+      load: { one: 3, five: 2, fifteen: 1 },
+      temperature: 50,
+    });
+    store.insert({
+      ...sample(300),
+      load: { one: 5, five: 4, fifteen: 3 },
+      temperature: 60,
+    });
+    expect(store.history({ from: 0, to: 360000 })[0]).toMatchObject({
+      load1: 4,
+      load5: 3,
+      load15: 2,
+      temperature: 55,
+    });
+  });
   test("retains complete snapshots across closing and reopening the database", () => {
     const directory = mkdtempSync(join(tmpdir(), "sentinel-test-"));
     directories.push(directory);

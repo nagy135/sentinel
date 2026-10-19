@@ -51,6 +51,8 @@ export interface Sample {
   timestamp: number;
   uptime: number;
   cpu: number | null;
+  load: { one: number; five: number; fifteen: number } | null;
+  temperature: number | null;
   cores: (number | null)[];
   memory: {
     total: number;
@@ -74,6 +76,10 @@ export interface HistoryPoint {
   disk: number | null;
   rx: number | null;
   tx: number | null;
+  load1: number | null;
+  load5: number | null;
+  load15: number | null;
+  temperature: number | null;
 }
 
 export interface DashboardData {

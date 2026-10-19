@@ -21,6 +21,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { TimeRangePicker } from "@/components/time-range-picker";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { DashboardGrid } from "@/components/dashboard-grid";
+import type { BlockId } from "@/lib/dashboard-layout";
 import { MetricChart } from "@/components/metric-chart";
 import { bytes, duration, pct, rate } from "@/lib/format";
 import { type DashboardData, type TimeRange } from "@/lib/metrics";
@@ -165,6 +167,400 @@ export function Dashboard() {
       ? "Metrics are delayed. The last saved values are shown."
       : null,
   ].filter(Boolean);
+  const blocks: Record<BlockId, ReactNode> = {
+    system: (
+      <section
+        aria-label="Detected system"
+        className="flex flex-wrap items-center gap-x-7 gap-y-4 rounded-xl border bg-card px-5 py-5 sm:px-6"
+      >
+        <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/70">
+          <Monitor className="size-5 text-muted-foreground" />
+        </span>
+        <div className="min-w-[140px] flex-1">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="break-all text-sm font-semibold">
+              {host?.hostname ?? "Detecting your machine…"}
+            </h2>
+            {host && (
+              <Badge
+                variant="secondary"
+                className="rounded-md text-[10px] font-medium"
+              >
+                {host.platform === "darwin" ? "macOS" : "Linux"}
+              </Badge>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {host
+              ? `${host.os} ${host.release} · ${host.arch}`
+              : "Reading system information"}
+          </p>
+        </div>
+        <div className="hidden h-8 w-px bg-border md:block" />
+        <div className="hidden min-w-0 max-w-64 space-y-1 md:block">
+          <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+            Processor
+          </p>
+          <p className="truncate text-xs" title={host?.cpu}>
+            {host?.cpu ?? "—"}
+            <span className="text-muted-foreground">
+              {" "}
+              · {host?.cores ?? "—"} cores
+            </span>
+          </p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+            Uptime
+          </p>
+          <p className="flex items-center gap-1.5 font-mono text-xs">
+            <Clock3 className="size-3 text-muted-foreground" />
+            {duration(sample?.uptime)}
+          </p>
+        </div>
+        <Badge
+          variant="outline"
+          className="gap-1.5 border-primary/20 bg-accent px-2.5 py-1 text-[10px] font-medium text-primary"
+        >
+          <Radio className="size-3" />
+          {host ? "Auto-detected" : "Detecting"}
+        </Badge>
+      </section>
+    ),
+    cpu: (
+      <Stat
+        icon={<Cpu className="size-4" />}
+        label="CPU usage"
+        value={pct(sample?.cpu)}
+        detail={`${host?.cores ?? "—"} logical cores · ${host?.physicalCores ?? "—"} physical`}
+      >
+        <Progress
+          aria-label="CPU usage"
+          value={sample?.cpu ?? 0}
+          className="h-1"
+        />
+      </Stat>
+    ),
+    memory: (
+      <Stat
+        icon={<MemoryStick className="size-4" />}
+        label="Memory usage"
+        value={pct(sample?.memory?.percent)}
+        detail={`${bytes(sample?.memory?.used)} of ${bytes(sample?.memory?.total)} active`}
+      >
+        <Progress
+          aria-label="Memory usage"
+          value={sample?.memory?.percent ?? 0}
+          className="h-1"
+        />
+      </Stat>
+    ),
+    storage: (
+      <Stat
+        icon={<HardDrive className="size-4" />}
+        label="Storage used"
+        value={pct(sample?.disk)}
+        detail={
+          mainDisk
+            ? `${bytes(mainDisk.used)} used · ${bytes(mainDisk.available)} free`
+            : "Waiting for disk information"
+        }
+      >
+        <Progress
+          aria-label="Storage used"
+          value={sample?.disk ?? 0}
+          className="h-1"
+        />
+      </Stat>
+    ),
+    network: (
+      <Stat
+        icon={<Network className="size-4" />}
+        label="Network traffic"
+        value={
+          <span className="flex items-center gap-2 text-[24px]">
+            <ArrowDown className="size-4 text-primary" />
+            {rate(sample?.rx)}
+          </span>
+        }
+        detail={
+          <span className="flex items-center gap-1">
+            <ArrowUp className="size-3" />
+            {rate(sample?.tx)} sent
+            <span className="ml-auto">
+              {sample?.networks.length ?? 0} active
+            </span>
+          </span>
+        }
+      >
+        <div className="h-1 rounded-full bg-muted" />
+      </Stat>
+    ),
+    "cpu-history": (
+      <MetricChart
+        title="CPU utilization"
+        description="Total activity across all processor cores"
+        data={history}
+        series={[{ key: "cpu", label: "CPU", color: green }]}
+        loading={loading}
+        window={data?.window}
+        onZoom={changeRange}
+      >
+        <div className="mt-4 flex items-center gap-3 border-t px-2 pt-4">
+          <span className="shrink-0 text-[10px] text-muted-foreground">
+            Per core
+          </span>
+          <div className="flex min-w-0 flex-1 gap-1">
+            {sample?.cores.map((value, index) => (
+              <div
+                key={index}
+                className="relative h-5 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted"
+                title={`Core ${index + 1}: ${pct(value)}`}
+              >
+                <div
+                  className="absolute inset-x-0 bottom-0 bg-primary/70"
+                  style={{ height: `${value ?? 0}%` }}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      </MetricChart>
+    ),
+    "memory-history": (
+      <MetricChart
+        title="Memory utilization"
+        description="Active memory, excluding reclaimable buffers and cache"
+        data={history}
+        series={[{ key: "memory", label: "Memory", color: green }]}
+        loading={loading}
+        window={data?.window}
+        onZoom={changeRange}
+      >
+        <div className="mt-4 flex justify-between border-t px-2 pt-4 text-[10px] text-muted-foreground">
+          <span>
+            Physical memory{" "}
+            <span className="ml-1.5 text-foreground">
+              {bytes(sample?.memory?.total)}
+            </span>
+          </span>
+          <span>
+            Swap used{" "}
+            <span className="ml-1.5 text-foreground">
+              {bytes(sample?.memory?.swapUsed)}
+            </span>
+          </span>
+        </div>
+      </MetricChart>
+    ),
+    "network-history": (
+      <MetricChart
+        title="Network throughput"
+        description="Traffic across active, non-loopback interfaces"
+        data={history}
+        unit="bytes"
+        series={[
+          { key: "rx", label: "Received", color: green },
+          { key: "tx", label: "Sent", color: blue },
+        ]}
+        loading={loading}
+        window={data?.window}
+        onZoom={changeRange}
+      />
+    ),
+    "storage-history": (
+      <MetricChart
+        title="Storage utilization"
+        description={
+          mainDisk
+            ? `Primary volume · ${mainDisk.mount}`
+            : "Primary volume capacity used"
+        }
+        data={history}
+        series={[{ key: "disk", label: "Storage", color: green }]}
+        loading={loading}
+        window={data?.window}
+        onZoom={changeRange}
+      />
+    ),
+    volumes: (
+      <Card className="gap-4 shadow-none">
+        <CardContent className="px-5 sm:px-6">
+          <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+            <HardDrive className="size-3.5 text-muted-foreground" />
+            Mounted volumes
+          </h2>
+          <p className="mb-5 text-xs text-muted-foreground">
+            Capacity by filesystem · shared volumes are listed separately
+          </p>
+          <div className="max-h-[340px] space-y-4 overflow-y-auto pr-2">
+            {sample?.disks.length ? (
+              sample.disks.map((disk) => (
+                <div key={`${disk.filesystem}:${disk.mount}`}>
+                  <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                    <span
+                      className="min-w-0 truncate font-mono"
+                      title={`${disk.mount} (${disk.filesystem})`}
+                    >
+                      {disk.mount}
+                    </span>
+                    <span className="shrink-0 font-mono tabular-nums">
+                      {pct(disk.percent)}
+                    </span>
+                  </div>
+                  <Progress
+                    aria-label={`${disk.mount} usage`}
+                    value={disk.percent}
+                    className="h-1"
+                  />
+                  <div className="mt-1.5 flex justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span>{disk.type}</span>
+                    <span>
+                      {bytes(disk.used)} used · {bytes(disk.available)} free
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="py-5 text-xs text-muted-foreground">
+                No volume information available yet.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    ),
+    interfaces: (
+      <Card className="gap-4 shadow-none">
+        <CardContent className="px-5 sm:px-6">
+          <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+            <Network className="size-3.5 text-muted-foreground" />
+            Network interfaces
+          </h2>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Active connections · bytes per second
+          </p>
+          <div>
+            {sample?.networks.length ? (
+              sample.networks.map((network) => (
+                <div
+                  key={network.iface}
+                  className="flex items-center justify-between gap-2 border-b py-3 last:border-0"
+                >
+                  <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
+                    <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+                    <span className="truncate">{network.iface}</span>
+                  </span>
+                  <div className="space-y-1 text-right font-mono text-[10px] tabular-nums">
+                    <p className="flex items-center justify-end gap-1.5">
+                      <ArrowDown className="size-3 text-primary" />
+                      {rate(network.rx)}
+                    </p>
+                    <p className="flex items-center justify-end gap-1.5 text-muted-foreground">
+                      <ArrowUpRight className="size-3" />
+                      {rate(network.tx)}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="py-5 text-xs text-muted-foreground">
+                No active interfaces detected yet.
+              </p>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    ),
+    information: (
+      <Card className="gap-4 shadow-none">
+        <CardContent className="px-5 sm:px-6">
+          <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+            <Server className="size-3.5 text-muted-foreground" />
+            System information
+          </h2>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Automatically detected on this host
+          </p>
+          <dl>
+            <Info label="System">{host?.model}</Info>
+            <Info label="Operating system">
+              {host ? `${host.os} ${host.release}` : null}
+            </Info>
+            <Info label="Kernel">{host?.kernel}</Info>
+            <Info label="Architecture">{host?.arch}</Info>
+            <Info label="Processor">{host?.cpu}</Info>
+            <Info label="Logical / physical cores">
+              {host ? `${host.cores} / ${host.physicalCores}` : null}
+            </Info>
+          </dl>
+        </CardContent>
+      </Card>
+    ),
+    "load-history": (
+      <MetricChart
+        title="System load"
+        description="Runnable and waiting tasks · 1, 5, and 15 minute averages"
+        data={history}
+        unit="load"
+        series={[
+          { key: "load1", label: "1m", color: green },
+          { key: "load5", label: "5m", color: blue },
+          { key: "load15", label: "15m", color: "var(--chart-3)" },
+        ]}
+        loading={loading}
+        window={data?.window}
+        onZoom={changeRange}
+      >
+        <div className="mt-4 flex flex-wrap justify-between gap-2 border-t px-2 pt-4 text-[10px] text-muted-foreground">
+          <span>
+            Now{" "}
+            <span className="ml-1 font-mono text-foreground">
+              {sample?.load
+                ? `${sample.load.one.toFixed(2)} / ${sample.load.five.toFixed(2)} / ${sample.load.fifteen.toFixed(2)}`
+                : "—"}
+            </span>
+          </span>
+          <span>
+            {host?.cores ?? "—"} logical cores · load is not a percentage
+          </span>
+        </div>
+      </MetricChart>
+    ),
+    "temperature-history": (
+      <MetricChart
+        title="CPU temperature"
+        description="CPU sensor reading · degrees Celsius"
+        data={history}
+        unit="temperature"
+        series={[{ key: "temperature", label: "CPU", color: green }]}
+        loading={loading}
+        window={data?.window}
+        onZoom={changeRange}
+        emptyMessage={
+          sample && sample.temperature == null
+            ? "Temperature sensor unavailable on this host"
+            : undefined
+        }
+      >
+        <div className="mt-4 flex flex-wrap justify-between gap-2 border-t px-2 pt-4 text-[10px] text-muted-foreground">
+          <span>
+            Current{" "}
+            <span className="ml-1 font-mono text-foreground">
+              {sample?.temperature != null
+                ? `${sample.temperature.toFixed(1)} °C`
+                : "Unavailable"}
+            </span>
+          </span>
+          <span>
+            {sample?.temperature != null
+              ? "Reported by the host CPU sensor"
+              : "No readable CPU sensor was detected"}
+          </span>
+        </div>
+      </MetricChart>
+    ),
+  };
   return (
     <div className="min-h-screen">
       <a
@@ -263,329 +659,7 @@ export function Dashboard() {
           </div>
         )}
 
-        <section
-          aria-label="Detected system"
-          className="flex flex-wrap items-center gap-x-7 gap-y-4 rounded-xl border bg-card px-5 py-5 sm:px-6"
-        >
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/70">
-            <Monitor className="size-5 text-muted-foreground" />
-          </span>
-          <div className="min-w-[140px] flex-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="break-all text-sm font-semibold">
-                {host?.hostname ?? "Detecting your machine…"}
-              </h2>
-              {host && (
-                <Badge
-                  variant="secondary"
-                  className="rounded-md text-[10px] font-medium"
-                >
-                  {host.platform === "darwin" ? "macOS" : "Linux"}
-                </Badge>
-              )}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {host
-                ? `${host.os} ${host.release} · ${host.arch}`
-                : "Reading system information"}
-            </p>
-          </div>
-          <div className="hidden h-8 w-px bg-border md:block" />
-          <div className="hidden min-w-0 max-w-64 space-y-1 md:block">
-            <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-              Processor
-            </p>
-            <p className="truncate text-xs" title={host?.cpu}>
-              {host?.cpu ?? "—"}
-              <span className="text-muted-foreground">
-                {" "}
-                · {host?.cores ?? "—"} cores
-              </span>
-            </p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
-              Uptime
-            </p>
-            <p className="flex items-center gap-1.5 font-mono text-xs">
-              <Clock3 className="size-3 text-muted-foreground" />
-              {duration(sample?.uptime)}
-            </p>
-          </div>
-          <Badge
-            variant="outline"
-            className="gap-1.5 border-primary/20 bg-accent px-2.5 py-1 text-[10px] font-medium text-primary"
-          >
-            <Radio className="size-3" />
-            {host ? "Auto-detected" : "Detecting"}
-          </Badge>
-        </section>
-
-        <section
-          aria-label="Current metrics"
-          className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-4"
-        >
-          <Stat
-            icon={<Cpu className="size-4" />}
-            label="CPU usage"
-            value={pct(sample?.cpu)}
-            detail={`${host?.cores ?? "—"} logical cores · ${host?.physicalCores ?? "—"} physical`}
-          >
-            <Progress
-              aria-label="CPU usage"
-              value={sample?.cpu ?? 0}
-              className="h-1"
-            />
-          </Stat>
-          <Stat
-            icon={<MemoryStick className="size-4" />}
-            label="Memory usage"
-            value={pct(sample?.memory?.percent)}
-            detail={`${bytes(sample?.memory?.used)} of ${bytes(sample?.memory?.total)} active`}
-          >
-            <Progress
-              aria-label="Memory usage"
-              value={sample?.memory?.percent ?? 0}
-              className="h-1"
-            />
-          </Stat>
-          <Stat
-            icon={<HardDrive className="size-4" />}
-            label="Storage used"
-            value={pct(sample?.disk)}
-            detail={
-              mainDisk
-                ? `${bytes(mainDisk.used)} used · ${bytes(mainDisk.available)} free`
-                : "Waiting for disk information"
-            }
-          >
-            <Progress
-              aria-label="Storage used"
-              value={sample?.disk ?? 0}
-              className="h-1"
-            />
-          </Stat>
-          <Stat
-            icon={<Network className="size-4" />}
-            label="Network traffic"
-            value={
-              <span className="flex items-center gap-2 text-[24px]">
-                <ArrowDown className="size-4 text-primary" />
-                {rate(sample?.rx)}
-              </span>
-            }
-            detail={
-              <span className="flex items-center gap-1">
-                <ArrowUp className="size-3" />
-                {rate(sample?.tx)} sent
-                <span className="ml-auto">
-                  {sample?.networks.length ?? 0} active
-                </span>
-              </span>
-            }
-          >
-            <div className="h-1 rounded-full bg-muted" />
-          </Stat>
-        </section>
-
-        <section
-          aria-label="Metric history"
-          className="grid gap-5 lg:grid-cols-2"
-        >
-          <MetricChart
-            title="CPU utilization"
-            description="Total activity across all processor cores"
-            data={history}
-            series={[{ key: "cpu", label: "CPU", color: green }]}
-            loading={loading}
-            window={data?.window}
-            onZoom={changeRange}
-          >
-            <div className="mt-4 flex items-center gap-3 border-t px-2 pt-4">
-              <span className="shrink-0 text-[10px] text-muted-foreground">
-                Per core
-              </span>
-              <div className="flex min-w-0 flex-1 gap-1">
-                {sample?.cores.map((value, index) => (
-                  <div
-                    key={index}
-                    className="relative h-5 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted"
-                    title={`Core ${index + 1}: ${pct(value)}`}
-                  >
-                    <div
-                      className="absolute inset-x-0 bottom-0 bg-primary/70"
-                      style={{ height: `${value ?? 0}%` }}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </MetricChart>
-          <MetricChart
-            title="Memory utilization"
-            description="Active memory, excluding reclaimable buffers and cache"
-            data={history}
-            series={[{ key: "memory", label: "Memory", color: green }]}
-            loading={loading}
-            window={data?.window}
-            onZoom={changeRange}
-          >
-            <div className="mt-4 flex justify-between border-t px-2 pt-4 text-[10px] text-muted-foreground">
-              <span>
-                Physical memory{" "}
-                <span className="ml-1.5 text-foreground">
-                  {bytes(sample?.memory?.total)}
-                </span>
-              </span>
-              <span>
-                Swap used{" "}
-                <span className="ml-1.5 text-foreground">
-                  {bytes(sample?.memory?.swapUsed)}
-                </span>
-              </span>
-            </div>
-          </MetricChart>
-          <MetricChart
-            title="Network throughput"
-            description="Traffic across active, non-loopback interfaces"
-            data={history}
-            unit="bytes"
-            series={[
-              { key: "rx", label: "Received", color: green },
-              { key: "tx", label: "Sent", color: blue },
-            ]}
-            loading={loading}
-            window={data?.window}
-            onZoom={changeRange}
-          />
-          <MetricChart
-            title="Storage utilization"
-            description={
-              mainDisk
-                ? `Primary volume · ${mainDisk.mount}`
-                : "Primary volume capacity used"
-            }
-            data={history}
-            series={[{ key: "disk", label: "Storage", color: green }]}
-            loading={loading}
-            window={data?.window}
-            onZoom={changeRange}
-          />
-        </section>
-
-        <section
-          aria-label="System details"
-          className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)]"
-        >
-          <Card className="gap-4 shadow-none">
-            <CardContent className="px-5 sm:px-6">
-              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
-                <HardDrive className="size-3.5 text-muted-foreground" />
-                Mounted volumes
-              </h2>
-              <p className="mb-5 text-xs text-muted-foreground">
-                Capacity by filesystem · shared volumes are listed separately
-              </p>
-              <div className="max-h-[340px] space-y-4 overflow-y-auto pr-2">
-                {sample?.disks.length ? (
-                  sample.disks.map((disk) => (
-                    <div key={`${disk.filesystem}:${disk.mount}`}>
-                      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
-                        <span
-                          className="min-w-0 truncate font-mono"
-                          title={`${disk.mount} (${disk.filesystem})`}
-                        >
-                          {disk.mount}
-                        </span>
-                        <span className="shrink-0 font-mono tabular-nums">
-                          {pct(disk.percent)}
-                        </span>
-                      </div>
-                      <Progress
-                        aria-label={`${disk.mount} usage`}
-                        value={disk.percent}
-                        className="h-1"
-                      />
-                      <div className="mt-1.5 flex justify-between gap-2 text-[10px] text-muted-foreground">
-                        <span>{disk.type}</span>
-                        <span>
-                          {bytes(disk.used)} used · {bytes(disk.available)} free
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="py-5 text-xs text-muted-foreground">
-                    No volume information available yet.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="gap-4 shadow-none">
-            <CardContent className="px-5 sm:px-6">
-              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
-                <Network className="size-3.5 text-muted-foreground" />
-                Network interfaces
-              </h2>
-              <p className="mb-3 text-xs text-muted-foreground">
-                Active connections · bytes per second
-              </p>
-              <div>
-                {sample?.networks.length ? (
-                  sample.networks.map((network) => (
-                    <div
-                      key={network.iface}
-                      className="flex items-center justify-between gap-2 border-b py-3 last:border-0"
-                    >
-                      <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
-                        <span className="size-1.5 shrink-0 rounded-full bg-primary" />
-                        <span className="truncate">{network.iface}</span>
-                      </span>
-                      <div className="space-y-1 text-right font-mono text-[10px] tabular-nums">
-                        <p className="flex items-center justify-end gap-1.5">
-                          <ArrowDown className="size-3 text-primary" />
-                          {rate(network.rx)}
-                        </p>
-                        <p className="flex items-center justify-end gap-1.5 text-muted-foreground">
-                          <ArrowUpRight className="size-3" />
-                          {rate(network.tx)}
-                        </p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="py-5 text-xs text-muted-foreground">
-                    No active interfaces detected yet.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="gap-4 shadow-none">
-            <CardContent className="px-5 sm:px-6">
-              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
-                <Server className="size-3.5 text-muted-foreground" />
-                System information
-              </h2>
-              <p className="mb-2 text-xs text-muted-foreground">
-                Automatically detected on this host
-              </p>
-              <dl>
-                <Info label="System">{host?.model}</Info>
-                <Info label="Operating system">
-                  {host ? `${host.os} ${host.release}` : null}
-                </Info>
-                <Info label="Kernel">{host?.kernel}</Info>
-                <Info label="Architecture">{host?.arch}</Info>
-                <Info label="Processor">{host?.cpu}</Info>
-                <Info label="Logical / physical cores">
-                  {host ? `${host.cores} / ${host.physicalCores}` : null}
-                </Info>
-              </dl>
-            </CardContent>
-          </Card>
-        </section>
+        <DashboardGrid blocks={blocks} />
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t pb-2 pt-5 text-[11px] text-muted-foreground">
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">

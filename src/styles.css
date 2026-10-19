@@ -28,6 +28,7 @@
   --color-ring: var(--ring);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -55,6 +56,7 @@
   --ring: #239b68;
   --chart-1: #239b68;
   --chart-2: #6b91ba;
+  --chart-3: #ae8245;
   --radius: 0.75rem;
 }
 
@@ -79,6 +81,7 @@
   --ring: #6cdaa4;
   --chart-1: #6cdaa4;
   --chart-2: #8caed4;
+  --chart-3: #d7ad6f;
 }
 
 @layer base {

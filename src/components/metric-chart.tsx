@@ -14,7 +14,7 @@ import { ChartZoom } from "@/components/chart-zoom";
 import { bytes } from "@/lib/format";
 
 type Series = {
-  key: "cpu" | "memory" | "disk" | "rx" | "tx";
+  key: Exclude<keyof HistoryPoint, "timestamp">;
   label: string;
   color: string;
 };
@@ -27,24 +27,32 @@ export function MetricChart({
   loading = false,
   window,
   onZoom,
+  emptyMessage,
   children,
 }: {
   title: string;
   description: string;
   data: HistoryPoint[];
   series: Series[];
-  unit?: "percent" | "bytes";
+  unit?: "percent" | "bytes" | "load" | "temperature";
   loading?: boolean;
   window?: AbsoluteRange;
   onZoom: (range: AbsoluteRange) => void;
+  emptyMessage?: string;
   children?: React.ReactNode;
 }) {
   const id = useId().replace(/:/g, "");
   const hasData = data.some((point) =>
-    series.some((s) => point[s.key] !== null),
+    series.some((s) => point[s.key] != null),
   );
   const formatValue = (value: number) =>
-    unit === "percent" ? `${value.toFixed(1)}%` : `${bytes(value)}/s`;
+    unit === "percent"
+      ? `${value.toFixed(1)}%`
+      : unit === "bytes"
+        ? `${bytes(value)}/s`
+        : unit === "temperature"
+          ? `${value.toFixed(1)} °C`
+          : value.toFixed(2);
   const longRange =
     data.length > 1 &&
     data[data.length - 1].timestamp - data[0].timestamp > 86400_000;
@@ -145,7 +153,13 @@ export function MetricChart({
                   tickMargin={8}
                   tickCount={5}
                   tickFormatter={(value) =>
-                    unit === "percent" ? `${value}%` : bytes(value, 1)
+                    unit === "percent"
+                      ? `${value}%`
+                      : unit === "bytes"
+                        ? bytes(value, 1)
+                        : unit === "temperature"
+                          ? `${value}°`
+                          : String(value)
                   }
                 />
                 <Tooltip
@@ -189,12 +203,18 @@ export function MetricChart({
               </AreaChart>
             </ResponsiveContainer>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
+            <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-sm text-muted-foreground">
               <span className="size-2 rounded-full bg-border" />
               <span>
-                {loading ? "Loading history…" : "No samples in this time range"}
+                {loading
+                  ? "Loading history…"
+                  : (emptyMessage ?? "No samples in this time range")}
               </span>
-              <span className="text-xs">New samples appear automatically.</span>
+              <span className="text-xs">
+                {emptyMessage
+                  ? "Sensor availability depends on this host."
+                  : "New samples appear automatically."}
+              </span>
             </div>
           )}
         </div>

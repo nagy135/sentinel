@@ -65,6 +65,14 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     expect(firstRun.collector.error).toBeNull();
     expect(firstRun.host?.hostname).toBeTruthy();
     expect(firstRun.latest?.cpu).toBeNumber();
+    expect(firstRun.latest?.load?.one).toBeGreaterThanOrEqual(0);
+    expect(firstRun.latest?.load?.five).toBeGreaterThanOrEqual(0);
+    expect(firstRun.latest?.load?.fifteen).toBeGreaterThanOrEqual(0);
+    expect(
+      firstRun.latest?.temperature === null ||
+        Number.isFinite(firstRun.latest?.temperature),
+    ).toBe(true);
+    expect(firstRun.history.some((point) => point.load1 !== null)).toBe(true);
     expect(firstRun.latest?.memory?.total).toBeGreaterThan(0);
     expect(
       firstRun.storage.last! - firstRun.storage.first!,

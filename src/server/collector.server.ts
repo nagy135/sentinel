@@ -1,5 +1,5 @@
 import si from "systeminformation";
-import { platform, uptime } from "node:os";
+import { loadavg, platform, uptime } from "node:os";
 import { readConfig } from "./config.server";
 import { MetricsStore } from "./store.server";
 import type {
@@ -78,13 +78,16 @@ export class Collector {
         return null;
       }
     }
-    const [cpu, mem, filesystems, interfaces, traffic] = await Promise.all([
-      read("CPU", () => si.currentLoad()),
-      read("Memory", () => si.mem()),
-      read("Disks", () => si.fsSize()),
-      read("Network interfaces", () => si.networkInterfaces()),
-      read("Network traffic", () => si.networkStats("*")),
-    ]);
+    const [cpu, mem, filesystems, interfaces, traffic, temperature] =
+      await Promise.all([
+        read("CPU", () => si.currentLoad()),
+        read("Memory", () => si.mem()),
+        read("Disks", () => si.fsSize()),
+        read("Network interfaces", () => si.networkInterfaces()),
+        read("Network traffic", () => si.networkStats("*")),
+        read("Temperature", () => si.cpuTemperature()),
+      ]);
+    const [one, five, fifteen] = loadavg();
     const timestamp = Date.now();
     const disks = (filesystems ?? [])
       .filter(
@@ -146,6 +149,10 @@ export class Collector {
       timestamp,
       uptime: uptime(),
       cpu: cpu ? percent(cpu.currentLoad) : null,
+      load: [one, five, fifteen].every((value) => valid(value) !== null)
+        ? { one, five, fifteen }
+        : null,
+      temperature: temperature?.main != null ? valid(temperature.main) : null,
       cores: cpu?.cpus.map((c) => percent(c.load)) ?? [],
       memory:
         mem && mem.total > 0
