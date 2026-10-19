@@ -73,6 +73,30 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       `http://127.0.0.1:${port}/api/metrics?range=toString`,
     );
     expect(invalid.status).toBe(400);
+    const from = firstRun.storage.first!;
+    const to = firstRun.storage.last!;
+    const selected = await fetch(
+      `http://127.0.0.1:${port}/api/metrics?range=custom&from=${from}&to=${to}`,
+    );
+    expect(selected.status).toBe(200);
+    const fixed: DashboardData = await selected.json();
+    expect(fixed.range).toEqual({ from, to });
+    expect(fixed.window).toEqual({ from, to });
+    expect(
+      fixed.history.every(
+        (point) => point.timestamp >= from && point.timestamp <= to,
+      ),
+    ).toBe(true);
+    for (const query of [
+      `range=custom&from=${to}&to=${from}`,
+      "range=custom&from=NaN&to=2",
+      "range=custom&from=0",
+      "range=1h&from=0&to=2",
+    ]) {
+      expect(
+        (await fetch(`http://127.0.0.1:${port}/api/metrics?${query}`)).status,
+      ).toBe(400);
+    }
     if (production) {
       const page = await fetch(`http://127.0.0.1:${port}/`);
       expect(page.status).toBe(200);

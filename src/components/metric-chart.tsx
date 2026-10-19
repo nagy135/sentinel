@@ -9,7 +9,8 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import type { HistoryPoint } from "@/lib/metrics";
+import type { AbsoluteRange, HistoryPoint } from "@/lib/metrics";
+import { ChartZoom } from "@/components/chart-zoom";
 import { bytes } from "@/lib/format";
 
 type Series = {
@@ -24,6 +25,8 @@ export function MetricChart({
   series,
   unit = "percent",
   loading = false,
+  window,
+  onZoom,
   children,
 }: {
   title: string;
@@ -32,6 +35,8 @@ export function MetricChart({
   series: Series[];
   unit?: "percent" | "bytes";
   loading?: boolean;
+  window?: AbsoluteRange;
+  onZoom: (range: AbsoluteRange) => void;
   children?: React.ReactNode;
 }) {
   const id = useId().replace(/:/g, "");
@@ -67,7 +72,7 @@ export function MetricChart({
       </CardHeader>
       <CardContent className="px-3 sm:px-4">
         <div
-          className={`metric-chart relative h-[210px] min-w-0 ${loading ? "opacity-40" : ""}`}
+          className={`metric-chart relative h-[210px] min-w-0 select-none ${loading ? "opacity-40" : ""}`}
           role="img"
           aria-label={`${title}: ${hasData ? `${data.length} chart points` : "waiting for measurements"}`}
         >
@@ -105,7 +110,10 @@ export function MetricChart({
                 <XAxis
                   dataKey="timestamp"
                   type="number"
-                  domain={["dataMin", "dataMax"]}
+                  domain={
+                    window ? [window.from, window.to] : ["dataMin", "dataMax"]
+                  }
+                  allowDataOverflow
                   tickLine={false}
                   axisLine={false}
                   minTickGap={40}
@@ -173,13 +181,18 @@ export function MetricChart({
                     connectNulls={false}
                   />
                 ))}
+                <ChartZoom
+                  title={title}
+                  onZoom={onZoom}
+                  enabled={!loading && data.length > 1}
+                />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
               <span className="size-2 rounded-full bg-border" />
               <span>
-                {loading ? "Loading history…" : "Waiting for measurements"}
+                {loading ? "Loading history…" : "No samples in this time range"}
               </span>
               <span className="text-xs">New samples appear automatically.</span>
             </div>

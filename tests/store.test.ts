@@ -81,4 +81,20 @@ describe("SQLite metric history", () => {
     });
     expect(store.latest()?.cpu).toBeNull();
   });
+
+  test("queries exact fixed boundaries and recovers detail when zooming", () => {
+    const store = memoryStore();
+    const start = 1_000_000;
+    for (let index = 0; index < 1000; index++)
+      store.insert(sample(start + index * 5000, index % 100));
+    const selected = { from: start + 501 * 5000, to: start + 510 * 5000 };
+    const points = store.history(selected, start + 1000 * 5000);
+    expect(points.length).toBe(10);
+    expect(points[0].timestamp).toBe(selected.from);
+    expect(points.at(-1)?.timestamp).toBe(selected.to);
+    expect(points[0].cpu).toBe(1);
+    expect(store.history(selected, start + 2000 * 5000)).toEqual(points);
+    expect(store.history({ from: 0, to: start - 1 })).toEqual([]);
+    expect(store.summary().count).toBe(1000);
+  });
 });

@@ -19,22 +19,18 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { TimeRangePicker } from "@/components/time-range-picker";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { MetricChart } from "@/components/metric-chart";
 import { bytes, duration, pct, rate } from "@/lib/format";
-import { isRange, ranges, type DashboardData, type Range } from "@/lib/metrics";
+import { type DashboardData, type TimeRange } from "@/lib/metrics";
+import { timeRangeQuery } from "@/lib/time-range";
 
 const green = "var(--chart-1)";
 const blue = "var(--chart-2)";
 
-function useMetrics(range: Range) {
+function useMetrics(range: TimeRange) {
+  const query = timeRangeQuery(range);
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
@@ -43,7 +39,7 @@ function useMetrics(range: Range) {
     const poll = async () => {
       let delay = 5000;
       try {
-        const response = await fetch(`/api/metrics?range=${range}`, {
+        const response = await fetch(`/api/metrics?${query}`, {
           signal: abort.signal,
           cache: "no-store",
         });
@@ -65,7 +61,7 @@ function useMetrics(range: Range) {
       abort.abort();
       clearTimeout(timer);
     };
-  }, [range]);
+  }, [query]);
   return { data, error };
 }
 
@@ -115,7 +111,24 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function Dashboard() {
-  const [range, setRange] = useState<Range>("1h");
+  const [range, setRange] = useState<TimeRange>("1h");
+  const [zoomHistory, setZoomHistory] = useState<TimeRange[]>([]);
+  function changeRange(next: TimeRange) {
+    setZoomHistory((previous) =>
+      typeof next === "string" ? [] : [...previous, range],
+    );
+    setRange(next);
+  }
+  function undoZoom() {
+    const previous = zoomHistory.at(-1);
+    if (!previous) return;
+    setZoomHistory(zoomHistory.slice(0, -1));
+    setRange(previous);
+  }
+  function resetZoom() {
+    setRange(zoomHistory.find((value) => typeof value === "string") ?? "1h");
+    setZoomHistory([]);
+  }
   const { data, error } = useMetrics(range);
   const [now, setNow] = useState(0);
   useEffect(() => {
@@ -138,7 +151,7 @@ export function Dashboard() {
     !error &&
     !data.collector.error &&
     !stale;
-  const loading = !data || data.range !== range;
+  const loading = !data || timeRangeQuery(data.range) !== timeRangeQuery(range);
   const history = data?.history ?? [];
   const mainDisk =
     sample?.disks.find((d) => d.mount === "/System/Volumes/Data") ??
@@ -201,7 +214,7 @@ export function Dashboard() {
               A little clarity on everything your machine is doing.
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span
                 className={`size-1.5 rounded-full ${live ? "bg-primary" : "bg-muted-foreground"}`}
@@ -214,28 +227,27 @@ export function Dashboard() {
                     ? "Delayed"
                     : "Connecting"}
             </span>
-            <Select
-              value={range}
-              onValueChange={(value) => {
-                if (isRange(value)) setRange(value);
-              }}
-            >
-              <SelectTrigger
-                aria-label="History time range"
-                className="min-w-40 bg-card"
-              >
-                <Clock3 className="size-3.5" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent position="popper">
-                {Object.entries(ranges).map(([key, value]) => (
-                  <SelectItem key={key} value={key}>
-                    {value.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <TimeRangePicker
+              range={range}
+              window={data?.window}
+              onChange={changeRange}
+              onBack={undoZoom}
+              onReset={resetZoom}
+              canGoBack={zoomHistory.length > 0}
+            />
           </div>
+        </div>
+
+        <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+          <p>
+            Drag across any graph to zoom all graphs. Press Escape to cancel.
+          </p>
+          {typeof range !== "string" && (
+            <p role="status" className="font-mono tabular-nums">
+              {new Date(range.from).toLocaleString()} —{" "}
+              {new Date(range.to).toLocaleString()} (local time)
+            </p>
+          )}
         </div>
 
         {warnings.length > 0 && (
@@ -386,6 +398,8 @@ export function Dashboard() {
             data={history}
             series={[{ key: "cpu", label: "CPU", color: green }]}
             loading={loading}
+            window={data?.window}
+            onZoom={changeRange}
           >
             <div className="mt-4 flex items-center gap-3 border-t px-2 pt-4">
               <span className="shrink-0 text-[10px] text-muted-foreground">
@@ -413,6 +427,8 @@ export function Dashboard() {
             data={history}
             series={[{ key: "memory", label: "Memory", color: green }]}
             loading={loading}
+            window={data?.window}
+            onZoom={changeRange}
           >
             <div className="mt-4 flex justify-between border-t px-2 pt-4 text-[10px] text-muted-foreground">
               <span>
@@ -439,6 +455,8 @@ export function Dashboard() {
               { key: "tx", label: "Sent", color: blue },
             ]}
             loading={loading}
+            window={data?.window}
+            onZoom={changeRange}
           />
           <MetricChart
             title="Storage utilization"
@@ -450,6 +468,8 @@ export function Dashboard() {
             data={history}
             series={[{ key: "disk", label: "Storage", color: green }]}
             loading={loading}
+            window={data?.window}
+            onZoom={changeRange}
           />
         </section>
 

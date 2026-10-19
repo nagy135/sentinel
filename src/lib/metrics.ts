@@ -7,6 +7,11 @@ export const ranges = {
   all: { label: "All history", ms: Infinity },
 } as const;
 export type Range = keyof typeof ranges;
+export interface AbsoluteRange {
+  from: number;
+  to: number;
+}
+export type TimeRange = Range | AbsoluteRange;
 export function isRange(value: string): value is Range {
   return value in ranges && Object.hasOwn(ranges, value);
 }
@@ -82,6 +87,7 @@ export interface DashboardData {
     bytes: number;
   };
   collector: { intervalMs: number; running: boolean; error: string | null };
-  range: Range;
+  range: TimeRange;
+  window: AbsoluteRange;
   now: number;
 }

@@ -4,7 +4,7 @@ import { dirname } from "node:path";
 import {
   ranges,
   type HistoryPoint,
-  type Range,
+  type TimeRange,
   type Sample,
 } from "../lib/metrics";
 
@@ -75,17 +75,20 @@ export class MetricsStore {
     return { ...row, bytes };
   }
 
-  history(range: Range, now = Date.now()): HistoryPoint[] {
+  history(range: TimeRange, now = Date.now()): HistoryPoint[] {
     const first =
-      range === "all"
-        ? (this.db
-            .query<{ first: number | null }, []>(
-              "SELECT MIN(timestamp) AS first FROM samples",
-            )
-            .get()?.first ?? now)
-        : now - ranges[range].ms;
+      typeof range !== "string"
+        ? range.from
+        : range === "all"
+          ? (this.db
+              .query<{ first: number | null }, []>(
+                "SELECT MIN(timestamp) AS first FROM samples",
+              )
+              .get()?.first ?? now)
+          : now - ranges[range].ms;
+    const end = typeof range === "string" ? now : range.to;
     // Bound the chart response without deleting or downsampling stored samples.
-    const bucketMs = Math.max(1, Math.ceil((now - first + 1) / 360));
+    const bucketMs = Math.max(1, Math.ceil((end - first + 1) / 360));
     return this.db
       .query<HistoryPoint, [number, number, number]>(
         `
@@ -96,7 +99,7 @@ export class MetricsStore {
       GROUP BY CAST(timestamp / ? AS INTEGER) ORDER BY timestamp
     `,
       )
-      .all(first, now, bucketMs);
+      .all(first, end, bucketMs);
   }
 
   close() {

@@ -1,16 +1,23 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { isRange } from "@/lib/metrics";
+import type { TimeRange } from "@/lib/metrics";
+import { parseTimeRange } from "@/lib/time-range";
 
 export const Route = createFileRoute("/api/metrics")({
   server: {
     handlers: {
       GET: async ({ request }) => {
-        const range = new URL(request.url).searchParams.get("range") ?? "1h";
-        if (!isRange(range))
+        let range: TimeRange;
+        try {
+          range = parseTimeRange(new URL(request.url).searchParams);
+        } catch (error) {
           return Response.json(
-            { error: "Invalid time range" },
+            {
+              error:
+                error instanceof Error ? error.message : "Invalid time range.",
+            },
             { status: 400 },
           );
+        }
         const { getCollector } = await import("@/server/collector.server");
         return Response.json(getCollector().dashboard(range), {
           headers: { "Cache-Control": "no-store" },

@@ -47,6 +47,7 @@ Restart the dev command after changing environment settings. Source edits to the
 - Receive/send throughput and individual active non-loopback network interfaces.
 - System uptime and collector status.
 - Interactive CPU, memory, storage, and network history charts, from 15 minutes to all history.
+- Custom start/end dates and drag-to-zoom on every graph, synchronized across all graphs. Fixed ranges keep their exact bounds while collection continues.
 - System, Light, and Dark appearance options; defaults to System. The preference is saved in the browser, and System follows OS appearance changes.
 
 The first network rate is unavailable until two counter samples exist. Counters that reset also wait for a fresh interval. Missing readings are shown as unavailable rather than zero. Network totals include virtual interfaces and bridges, so forwarded traffic can appear on more than one interface.
@@ -59,7 +60,11 @@ Every sample is retained in local SQLite, including detailed per-core, disk, and
 
 Charts query approximately 360 averaged time buckets per selected range. This bounds response size while leaving all raw samples intact. `All history` includes samples from previous runs using the same database. Long all-history queries will require more work as the database grows; persistent rollups can be added later.
 
-The dashboard reads `GET /api/metrics?range=1h`. Supported ranges: `15m`, `1h`, `6h`, `24h`, `7d`, and `all`. There are no write endpoints.
+Drag horizontally across the plotted area of any graph to inspect that time span. Dragging in either direction works, including across filled areas. A further drag zooms in again. Use **Undo zoom** to return one step, or **Reset to live** to return to the preset you started with. Press Escape to cancel an in-progress selection. Touch gestures allow horizontal selection while preserving vertical page scrolling.
+
+Select **Custom range** in the time menu to enter a start and end date/time in your browser's local timezone. **Edit range** changes a fixed range. Empty windows are shown explicitly; changing the history range never stops live collection or changes stored data. Zoom queries SQLite again, so narrower windows recover detail from the original samples.
+
+The dashboard reads `GET /api/metrics?range=1h`. Supported presets: `15m`, `1h`, `6h`, `24h`, `7d`, and `all`. Fixed ranges use `?range=custom&from=<epoch-ms>&to=<epoch-ms>` (inclusive bounds). The response includes the requested `range` and the resolved `window` shared by every graph. Invalid or reversed boundaries return HTTP 400. There are no write endpoints.
 
 ## Checks
 

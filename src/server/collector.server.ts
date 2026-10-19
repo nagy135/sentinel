@@ -6,9 +6,10 @@ import type {
   DashboardData,
   HostInfo,
   NetworkMetric,
-  Range,
+  TimeRange,
   Sample,
 } from "../lib/metrics";
+import { ranges } from "../lib/metrics";
 
 const valid = (value: number): number | null =>
   Number.isFinite(value) && value >= 0 ? value : null;
@@ -188,19 +189,29 @@ export class Collector {
       );
   }
 
-  dashboard(range: Range): DashboardData {
+  dashboard(range: TimeRange): DashboardData {
     const now = Date.now();
+    const storage = this.store.summary();
+    const window =
+      typeof range === "string"
+        ? {
+            from:
+              range === "all" ? (storage.first ?? now) : now - ranges[range].ms,
+            to: now,
+          }
+        : range;
     return {
       host: this.host,
       latest: this.store.latest(),
-      history: this.store.history(range, now),
-      storage: this.store.summary(),
+      history: this.store.history(window, now),
+      storage,
       collector: {
         running: this.running && !this.stopped,
         intervalMs: this.config.intervalMs,
         error: this.error,
       },
       range,
+      window,
       now,
     };
   }
