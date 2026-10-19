@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { DashboardData } from "../src/lib/metrics";
 
-test("dev command collects without a browser and retains history after a restart", async () => {
+const production = process.env.SENTINEL_TEST_PRODUCTION === "1";
+test(`${production ? "production" : "dev"} command collects without a browser and retains history after a restart`, async () => {
   const directory = mkdtempSync(join(tmpdir(), "sentinel-service-"));
   const reservation = Bun.serve({
     hostname: "127.0.0.1",
@@ -20,7 +21,7 @@ test("dev command collects without a browser and retains history after a restart
     SENTINEL_DB_PATH: join(directory, "history.sqlite"),
   };
   const start = () =>
-    Bun.spawn(["bun", "scripts/dev.ts"], {
+    Bun.spawn(["bun", production ? "scripts/start.ts" : "scripts/dev.ts"], {
       cwd: join(import.meta.dir, ".."),
       env,
       stdout: "ignore",
@@ -72,6 +73,24 @@ test("dev command collects without a browser and retains history after a restart
       `http://127.0.0.1:${port}/api/metrics?range=toString`,
     );
     expect(invalid.status).toBe(400);
+    if (production) {
+      const page = await fetch(`http://127.0.0.1:${port}/`);
+      expect(page.status).toBe(200);
+      const html = await page.text();
+      const asset = html.match(/\/assets\/[^"\s<>]+\.css/)?.[0];
+      expect(asset).toBeTruthy();
+      const stylesheet = await fetch(`http://127.0.0.1:${port}${asset}`);
+      expect(stylesheet.status).toBe(200);
+      expect(stylesheet.headers.get("content-type")).toContain("text/css");
+      expect(stylesheet.headers.get("cache-control")).toContain("immutable");
+      const head = await fetch(`http://127.0.0.1:${port}${asset}`, {
+        method: "HEAD",
+      });
+      expect(head.status).toBe(200);
+      expect(await head.text()).toBe("");
+      const privateFile = await fetch(`http://127.0.0.1:${port}/package.json`);
+      expect(privateFile.status).toBe(404);
+    }
     await stop();
     service = start();
     const restarted = await waitFor(

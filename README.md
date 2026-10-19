@@ -13,7 +13,15 @@ bun run dev
 
 Open **http://127.0.0.1:3000**. This one command starts both the dashboard and the background collector. The server binds to localhost; no login or external metrics service is required. Collection continues when the browser is closed and stops when the dev process stops.
 
-This version provides a development server. Production packaging, systemd/launchd integration, and authentication are deferred.
+For production, build once and start the Bun server:
+
+```sh
+bun install --frozen-lockfile
+bun run build
+bun start
+```
+
+The production runner serves the built dashboard and starts the collector without Vite or source watching. It also binds to localhost, ready for an HTTPS reverse proxy. Set `SENTINEL_DB_PATH` to persistent storage outside the checkout. Authentication is not included yet.
 
 ## Configuration
 
@@ -61,11 +69,12 @@ bun run typecheck
 bun test
 ```
 
-The first build or dev run generates TanStack Router's `src/routeTree.gen.ts`. The build emits client/server bundles; a production runner is not included yet.
+The first build or dev run generates TanStack Router's `src/routeTree.gen.ts`. The build emits client/server bundles used by `bun start`.
 
 ## Code
 
 - `scripts/dev.ts` starts Vite and the collector together.
+- `scripts/start.ts` serves the production build and starts the collector together.
 - `src/server/` contains the platform adapter, configuration, and Bun SQLite store; these modules stay on the server.
 - `src/routes/api.metrics.ts` exposes the read-only dashboard snapshot and history.
 - `src/components/` contains the dashboard, Recharts graphs, and theme handling.

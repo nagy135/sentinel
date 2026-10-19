@@ -5,8 +5,10 @@
   "scripts": {
     "dev": "bun --watch scripts/dev.ts",
     "build": "bun --bun vite build",
+    "start": "bun run scripts/start.ts",
     "typecheck": "tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "test:production": "bun run build && SENTINEL_TEST_PRODUCTION=1 bun test"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.45",

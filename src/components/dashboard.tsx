@@ -177,7 +177,7 @@ export function Dashboard() {
           <div className="flex items-center gap-5">
             <span className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
               <Terminal className="size-3.5" />
-              localhost
+              {host?.hostname ?? "Local host"}
             </span>
             <ThemeSwitcher />
           </div>
