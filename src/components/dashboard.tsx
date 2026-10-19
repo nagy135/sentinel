@@ -1,0 +1,596 @@
+import { useEffect, useState, type ReactNode } from "react";
+import {
+  Activity,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpRight,
+  CircleAlert,
+  Clock3,
+  Cpu,
+  Database,
+  HardDrive,
+  MemoryStick,
+  Monitor,
+  Network,
+  Radio,
+  Server,
+  Terminal,
+} from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+import { MetricChart } from "@/components/metric-chart";
+import { bytes, duration, pct, rate } from "@/lib/format";
+import { isRange, ranges, type DashboardData, type Range } from "@/lib/metrics";
+
+const green = "var(--chart-1)";
+const blue = "var(--chart-2)";
+
+function useMetrics(range: Range) {
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      let delay = 5000;
+      try {
+        const response = await fetch(`/api/metrics?range=${range}`, {
+          signal: abort.signal,
+          cache: "no-store",
+        });
+        if (!response.ok)
+          throw new Error("Could not reach the metrics service.");
+        const next: DashboardData = await response.json();
+        if (abort.signal.aborted) return;
+        setData(next);
+        setError(null);
+        delay = next.collector.intervalMs;
+      } catch (error) {
+        if (!abort.signal.aborted)
+          setError(error instanceof Error ? error.message : "Connection lost.");
+      }
+      if (!abort.signal.aborted) timer = setTimeout(() => void poll(), delay);
+    };
+    void poll();
+    return () => {
+      abort.abort();
+      clearTimeout(timer);
+    };
+  }, [range]);
+  return { data, error };
+}
+
+function Stat({
+  icon,
+  label,
+  value,
+  detail,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: ReactNode;
+  detail: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <Card className="gap-0 py-5 shadow-none">
+      <CardContent className="space-y-4 px-5">
+        <div className="flex items-center justify-between text-muted-foreground">
+          <h2 className="text-xs font-medium">{label}</h2>
+          {icon}
+        </div>
+        <div>
+          <div className="font-mono text-[28px] font-medium leading-tight tracking-tight tabular-nums">
+            {value}
+          </div>
+          <div className="mt-1.5 truncate text-xs text-muted-foreground">
+            {detail}
+          </div>
+        </div>
+        {children}
+      </CardContent>
+    </Card>
+  );
+}
+
+function Info({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex justify-between gap-5 border-b py-3 text-xs last:border-0">
+      <dt className="shrink-0 text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 text-right font-medium break-words">
+        {children || "—"}
+      </dd>
+    </div>
+  );
+}
+
+export function Dashboard() {
+  const [range, setRange] = useState<Range>("1h");
+  const { data, error } = useMetrics(range);
+  const [now, setNow] = useState(0);
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const sample = data?.latest;
+  const host = data?.host;
+  const age = sample
+    ? Math.max(0, Math.floor((now - sample.timestamp) / 1000))
+    : null;
+  const stale =
+    !!sample &&
+    now - sample.timestamp >
+      Math.max((data?.collector.intervalMs ?? 5000) * 3, 15_000);
+  const live =
+    !!sample &&
+    data?.collector.running &&
+    !error &&
+    !data.collector.error &&
+    !stale;
+  const loading = !data || data.range !== range;
+  const history = data?.history ?? [];
+  const mainDisk =
+    sample?.disks.find((d) => d.mount === "/System/Volumes/Data") ??
+    sample?.disks.find((d) => d.mount === "/") ??
+    sample?.disks[0];
+  const warnings = [
+    error,
+    data?.collector.error,
+    ...(sample?.warnings ?? []),
+    stale && !error
+      ? "Metrics are delayed. The last saved values are shown."
+      : null,
+  ].filter(Boolean);
+  return (
+    <div className="min-h-screen">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-md bg-card p-3 focus:not-sr-only focus:absolute focus:left-4 focus:top-4"
+      >
+        Skip to dashboard
+      </a>
+      <header className="border-b bg-card">
+        <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-3 px-5 py-4 sm:px-8 lg:px-12">
+          <a
+            href="/"
+            className="flex items-center gap-2.5 font-semibold tracking-tight"
+            aria-label="Sentinel home"
+          >
+            <span className="flex size-8 items-center justify-center rounded-[10px] bg-primary text-primary-foreground">
+              <Activity className="size-4" strokeWidth={2.3} />
+            </span>
+            <span className="text-lg">
+              sentinel<span className="text-primary">.</span>
+            </span>
+          </a>
+          <div className="flex items-center gap-5">
+            <span className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
+              <Terminal className="size-3.5" />
+              localhost
+            </span>
+            <ThemeSwitcher />
+          </div>
+        </div>
+      </header>
+      <main
+        id="main"
+        className="mx-auto max-w-[1440px] space-y-6 px-5 py-7 sm:px-8 lg:px-12 lg:py-9"
+      >
+        <div className="flex flex-wrap items-end justify-between gap-5">
+          <div>
+            <div className="mb-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span>Local machine</span>
+              <span className="px-1 text-border">/</span>
+              <span className="text-foreground">Overview</span>
+            </div>
+            <h1 className="text-[27px] font-semibold tracking-tight sm:text-3xl">
+              System overview
+            </h1>
+            <p className="mt-2 text-sm text-muted-foreground">
+              A little clarity on everything your machine is doing.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <span
+                className={`size-1.5 rounded-full ${live ? "bg-primary" : "bg-muted-foreground"}`}
+              />
+              {live
+                ? "Live"
+                : error
+                  ? "Reconnecting"
+                  : stale
+                    ? "Delayed"
+                    : "Connecting"}
+            </span>
+            <Select
+              value={range}
+              onValueChange={(value) => {
+                if (isRange(value)) setRange(value);
+              }}
+            >
+              <SelectTrigger
+                aria-label="History time range"
+                className="min-w-40 bg-card"
+              >
+                <Clock3 className="size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent position="popper">
+                {Object.entries(ranges).map(([key, value]) => (
+                  <SelectItem key={key} value={key}>
+                    {value.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {warnings.length > 0 && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-destructive/25 bg-destructive/5 px-4 py-3 text-sm"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+            <span>
+              {warnings.join(" · ")}
+              {error ? " Retrying automatically." : ""}
+            </span>
+          </div>
+        )}
+
+        <section
+          aria-label="Detected system"
+          className="flex flex-wrap items-center gap-x-7 gap-y-4 rounded-xl border bg-card px-5 py-5 sm:px-6"
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted/70">
+            <Monitor className="size-5 text-muted-foreground" />
+          </span>
+          <div className="min-w-[140px] flex-1">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="break-all text-sm font-semibold">
+                {host?.hostname ?? "Detecting your machine…"}
+              </h2>
+              {host && (
+                <Badge
+                  variant="secondary"
+                  className="rounded-md text-[10px] font-medium"
+                >
+                  {host.platform === "darwin" ? "macOS" : "Linux"}
+                </Badge>
+              )}
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {host
+                ? `${host.os} ${host.release} · ${host.arch}`
+                : "Reading system information"}
+            </p>
+          </div>
+          <div className="hidden h-8 w-px bg-border md:block" />
+          <div className="hidden min-w-0 max-w-64 space-y-1 md:block">
+            <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+              Processor
+            </p>
+            <p className="truncate text-xs" title={host?.cpu}>
+              {host?.cpu ?? "—"}
+              <span className="text-muted-foreground">
+                {" "}
+                · {host?.cores ?? "—"} cores
+              </span>
+            </p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+              Uptime
+            </p>
+            <p className="flex items-center gap-1.5 font-mono text-xs">
+              <Clock3 className="size-3 text-muted-foreground" />
+              {duration(sample?.uptime)}
+            </p>
+          </div>
+          <Badge
+            variant="outline"
+            className="gap-1.5 border-primary/20 bg-accent px-2.5 py-1 text-[10px] font-medium text-primary"
+          >
+            <Radio className="size-3" />
+            {host ? "Auto-detected" : "Detecting"}
+          </Badge>
+        </section>
+
+        <section
+          aria-label="Current metrics"
+          className="grid grid-cols-1 gap-4 min-[480px]:grid-cols-2 lg:grid-cols-4"
+        >
+          <Stat
+            icon={<Cpu className="size-4" />}
+            label="CPU usage"
+            value={pct(sample?.cpu)}
+            detail={`${host?.cores ?? "—"} logical cores · ${host?.physicalCores ?? "—"} physical`}
+          >
+            <Progress
+              aria-label="CPU usage"
+              value={sample?.cpu ?? 0}
+              className="h-1"
+            />
+          </Stat>
+          <Stat
+            icon={<MemoryStick className="size-4" />}
+            label="Memory usage"
+            value={pct(sample?.memory?.percent)}
+            detail={`${bytes(sample?.memory?.used)} of ${bytes(sample?.memory?.total)} active`}
+          >
+            <Progress
+              aria-label="Memory usage"
+              value={sample?.memory?.percent ?? 0}
+              className="h-1"
+            />
+          </Stat>
+          <Stat
+            icon={<HardDrive className="size-4" />}
+            label="Storage used"
+            value={pct(sample?.disk)}
+            detail={
+              mainDisk
+                ? `${bytes(mainDisk.used)} used · ${bytes(mainDisk.available)} free`
+                : "Waiting for disk information"
+            }
+          >
+            <Progress
+              aria-label="Storage used"
+              value={sample?.disk ?? 0}
+              className="h-1"
+            />
+          </Stat>
+          <Stat
+            icon={<Network className="size-4" />}
+            label="Network traffic"
+            value={
+              <span className="flex items-center gap-2 text-[24px]">
+                <ArrowDown className="size-4 text-primary" />
+                {rate(sample?.rx)}
+              </span>
+            }
+            detail={
+              <span className="flex items-center gap-1">
+                <ArrowUp className="size-3" />
+                {rate(sample?.tx)} sent
+                <span className="ml-auto">
+                  {sample?.networks.length ?? 0} active
+                </span>
+              </span>
+            }
+          >
+            <div className="h-1 rounded-full bg-muted" />
+          </Stat>
+        </section>
+
+        <section
+          aria-label="Metric history"
+          className="grid gap-5 lg:grid-cols-2"
+        >
+          <MetricChart
+            title="CPU utilization"
+            description="Total activity across all processor cores"
+            data={history}
+            series={[{ key: "cpu", label: "CPU", color: green }]}
+            loading={loading}
+          >
+            <div className="mt-4 flex items-center gap-3 border-t px-2 pt-4">
+              <span className="shrink-0 text-[10px] text-muted-foreground">
+                Per core
+              </span>
+              <div className="flex min-w-0 flex-1 gap-1">
+                {sample?.cores.map((value, index) => (
+                  <div
+                    key={index}
+                    className="relative h-5 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted"
+                    title={`Core ${index + 1}: ${pct(value)}`}
+                  >
+                    <div
+                      className="absolute inset-x-0 bottom-0 bg-primary/70"
+                      style={{ height: `${value ?? 0}%` }}
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </MetricChart>
+          <MetricChart
+            title="Memory utilization"
+            description="Active memory, excluding reclaimable buffers and cache"
+            data={history}
+            series={[{ key: "memory", label: "Memory", color: green }]}
+            loading={loading}
+          >
+            <div className="mt-4 flex justify-between border-t px-2 pt-4 text-[10px] text-muted-foreground">
+              <span>
+                Physical memory{" "}
+                <span className="ml-1.5 text-foreground">
+                  {bytes(sample?.memory?.total)}
+                </span>
+              </span>
+              <span>
+                Swap used{" "}
+                <span className="ml-1.5 text-foreground">
+                  {bytes(sample?.memory?.swapUsed)}
+                </span>
+              </span>
+            </div>
+          </MetricChart>
+          <MetricChart
+            title="Network throughput"
+            description="Traffic across active, non-loopback interfaces"
+            data={history}
+            unit="bytes"
+            series={[
+              { key: "rx", label: "Received", color: green },
+              { key: "tx", label: "Sent", color: blue },
+            ]}
+            loading={loading}
+          />
+          <MetricChart
+            title="Storage utilization"
+            description={
+              mainDisk
+                ? `Primary volume · ${mainDisk.mount}`
+                : "Primary volume capacity used"
+            }
+            data={history}
+            series={[{ key: "disk", label: "Storage", color: green }]}
+            loading={loading}
+          />
+        </section>
+
+        <section
+          aria-label="System details"
+          className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,1fr)]"
+        >
+          <Card className="gap-4 shadow-none">
+            <CardContent className="px-5 sm:px-6">
+              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+                <HardDrive className="size-3.5 text-muted-foreground" />
+                Mounted volumes
+              </h2>
+              <p className="mb-5 text-xs text-muted-foreground">
+                Capacity by filesystem · shared volumes are listed separately
+              </p>
+              <div className="max-h-[340px] space-y-4 overflow-y-auto pr-2">
+                {sample?.disks.length ? (
+                  sample.disks.map((disk) => (
+                    <div key={`${disk.filesystem}:${disk.mount}`}>
+                      <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                        <span
+                          className="min-w-0 truncate font-mono"
+                          title={`${disk.mount} (${disk.filesystem})`}
+                        >
+                          {disk.mount}
+                        </span>
+                        <span className="shrink-0 font-mono tabular-nums">
+                          {pct(disk.percent)}
+                        </span>
+                      </div>
+                      <Progress
+                        aria-label={`${disk.mount} usage`}
+                        value={disk.percent}
+                        className="h-1"
+                      />
+                      <div className="mt-1.5 flex justify-between gap-2 text-[10px] text-muted-foreground">
+                        <span>{disk.type}</span>
+                        <span>
+                          {bytes(disk.used)} used · {bytes(disk.available)} free
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="py-5 text-xs text-muted-foreground">
+                    No volume information available yet.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="gap-4 shadow-none">
+            <CardContent className="px-5 sm:px-6">
+              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+                <Network className="size-3.5 text-muted-foreground" />
+                Network interfaces
+              </h2>
+              <p className="mb-3 text-xs text-muted-foreground">
+                Active connections · bytes per second
+              </p>
+              <div>
+                {sample?.networks.length ? (
+                  sample.networks.map((network) => (
+                    <div
+                      key={network.iface}
+                      className="flex items-center justify-between gap-2 border-b py-3 last:border-0"
+                    >
+                      <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
+                        <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+                        <span className="truncate">{network.iface}</span>
+                      </span>
+                      <div className="space-y-1 text-right font-mono text-[10px] tabular-nums">
+                        <p className="flex items-center justify-end gap-1.5">
+                          <ArrowDown className="size-3 text-primary" />
+                          {rate(network.rx)}
+                        </p>
+                        <p className="flex items-center justify-end gap-1.5 text-muted-foreground">
+                          <ArrowUpRight className="size-3" />
+                          {rate(network.tx)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="py-5 text-xs text-muted-foreground">
+                    No active interfaces detected yet.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+          <Card className="gap-4 shadow-none">
+            <CardContent className="px-5 sm:px-6">
+              <h2 className="mb-1 flex items-center gap-2 text-sm font-semibold">
+                <Server className="size-3.5 text-muted-foreground" />
+                System information
+              </h2>
+              <p className="mb-2 text-xs text-muted-foreground">
+                Automatically detected on this host
+              </p>
+              <dl>
+                <Info label="System">{host?.model}</Info>
+                <Info label="Operating system">
+                  {host ? `${host.os} ${host.release}` : null}
+                </Info>
+                <Info label="Kernel">{host?.kernel}</Info>
+                <Info label="Architecture">{host?.arch}</Info>
+                <Info label="Processor">{host?.cpu}</Info>
+                <Info label="Logical / physical cores">
+                  {host ? `${host.cores} / ${host.physicalCores}` : null}
+                </Info>
+              </dl>
+            </CardContent>
+          </Card>
+        </section>
+        <footer className="flex flex-wrap items-center justify-between gap-3 border-t pb-2 pt-5 text-[11px] text-muted-foreground">
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="flex items-center gap-1.5">
+              <Database className="size-3" />
+              All history saved locally
+            </span>
+            <span className="text-border">/</span>
+            <span>{data?.storage.count.toLocaleString() ?? "0"} samples</span>
+            <span className="text-border">/</span>
+            <span>{bytes(data?.storage.bytes)}</span>
+            {data?.storage.first && (
+              <span className="hidden sm:inline">
+                since {new Date(data.storage.first).toLocaleDateString()}
+              </span>
+            )}
+          </p>
+          <p>
+            {data
+              ? `Collecting every ${data.collector.intervalMs / 1000}s`
+              : "Connecting to collector"}
+            <span className="mx-2 text-border">/</span>
+            {age !== null ? `Updated ${age}s ago` : "Waiting for first sample"}
+          </p>
+        </footer>
+      </main>
+    </div>
+  );
+}

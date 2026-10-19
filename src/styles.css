@@ -1,0 +1,111 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: #f7f8f9;
+  --foreground: #1c2422;
+  --card: #ffffff;
+  --card-foreground: #1c2422;
+  --popover: #ffffff;
+  --popover-foreground: #1c2422;
+  --primary: #18794e;
+  --primary-foreground: #ffffff;
+  --secondary: #edf0ef;
+  --secondary-foreground: #35433d;
+  --muted: #f1f3f2;
+  --muted-foreground: #69736f;
+  --accent: #e9f4ee;
+  --accent-foreground: #18794e;
+  --destructive: #c63d3d;
+  --border: #e4e8e6;
+  --input: #dde3e0;
+  --ring: #239b68;
+  --chart-1: #239b68;
+  --chart-2: #6b91ba;
+  --radius: 0.75rem;
+}
+
+.dark {
+  --background: #101413;
+  --foreground: #e5ece8;
+  --card: #171c1a;
+  --card-foreground: #e5ece8;
+  --popover: #1c2320;
+  --popover-foreground: #e5ece8;
+  --primary: #6cdaa4;
+  --primary-foreground: #102b1d;
+  --secondary: #242d28;
+  --secondary-foreground: #d8e3dd;
+  --muted: #1d2521;
+  --muted-foreground: #9ca9a2;
+  --accent: #203c2d;
+  --accent-foreground: #83e3b3;
+  --destructive: #f28080;
+  --border: #2b342f;
+  --input: #354239;
+  --ring: #6cdaa4;
+  --chart-1: #6cdaa4;
+  --chart-2: #8caed4;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+  }
+  button:not(:disabled),
+  [role="radio"],
+  [role="combobox"] {
+    cursor: pointer;
+  }
+  ::selection {
+    @apply bg-primary/20;
+  }
+}
+
+.metric-chart .recharts-cartesian-axis-tick text {
+  fill: var(--muted-foreground);
+  font-size: 11px;
+}
+.metric-chart .recharts-cartesian-grid line {
+  stroke: var(--border);
+}
+.metric-chart .recharts-tooltip-cursor {
+  stroke: var(--muted-foreground);
+  stroke-dasharray: 4 4;
+}
