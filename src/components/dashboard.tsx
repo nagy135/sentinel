@@ -79,16 +79,29 @@ function Stat({
   label,
   value,
   detail,
+  status,
   children,
 }: {
   icon: ReactNode;
   label: string;
   value: ReactNode;
   detail: ReactNode;
+  status: "Live" | "Delayed" | "Reconnecting" | "Connecting";
   children?: ReactNode;
 }) {
   return (
-    <Card className="gap-0 py-5 shadow-none">
+    <Card
+      data-live-card={label}
+      className={`relative gap-0 py-5 shadow-none ${status === "Live" ? "border-primary/40" : "border-muted-foreground/35"}`}
+    >
+      <span
+        className={`absolute -top-2.5 left-4 inline-flex items-center gap-1.5 bg-card px-2 text-[10px] font-semibold tracking-wide uppercase ${status === "Live" ? "text-primary" : "text-muted-foreground"}`}
+      >
+        <span
+          className={`size-1.5 rounded-full ${status === "Live" ? "bg-primary" : "bg-muted-foreground"}`}
+        />
+        {status}
+      </span>
       <CardContent className="space-y-4 px-5">
         <div className="flex items-center justify-between text-muted-foreground">
           <h2 className="text-xs font-medium">{label}</h2>
@@ -103,6 +116,13 @@ function Stat({
           </div>
         </div>
         {children}
+        <p className="border-t border-current/10 pt-3 text-[10px] leading-relaxed text-muted-foreground">
+          {status === "Live"
+            ? "Always current, even when zoomed"
+            : status === "Connecting"
+              ? "Waiting for the first sample"
+              : "Last saved reading · updates delayed"}
+        </p>
       </CardContent>
     </Card>
   );
@@ -174,6 +194,13 @@ export function Dashboard() {
     !error &&
     !data.collector.error &&
     !stale;
+  const liveStatus = live
+    ? "Live"
+    : error
+      ? "Reconnecting"
+      : sample
+        ? "Delayed"
+        : "Connecting";
   const loading = !data || timeRangeQuery(data.range) !== timeRangeQuery(range);
   const history = data?.history ?? [];
   const mainDisk =
@@ -253,6 +280,7 @@ export function Dashboard() {
       <Stat
         icon={<Cpu className="size-4" />}
         label="CPU usage"
+        status={liveStatus}
         value={pct(sample?.cpu)}
         detail={`${host?.cores ?? "—"} logical cores · ${host?.physicalCores ?? "—"} physical`}
       >
@@ -267,6 +295,7 @@ export function Dashboard() {
       <Stat
         icon={<MemoryStick className="size-4" />}
         label="Memory usage"
+        status={liveStatus}
         value={pct(sample?.memory?.percent)}
         detail={`${bytes(sample?.memory?.used)} of ${bytes(sample?.memory?.total)} active`}
       >
@@ -281,6 +310,7 @@ export function Dashboard() {
       <Stat
         icon={<HardDrive className="size-4" />}
         label="Storage used"
+        status={liveStatus}
         value={pct(sample?.disk)}
         detail={
           mainDisk
@@ -299,6 +329,7 @@ export function Dashboard() {
       <Stat
         icon={<Network className="size-4" />}
         label="Network traffic"
+        status={liveStatus}
         value={
           <span className="flex items-center gap-2 text-[24px]">
             <ArrowDown className="size-4 text-primary" />
@@ -665,13 +696,7 @@ export function Dashboard() {
               <span
                 className={`size-1.5 rounded-full ${live ? "bg-primary" : "bg-muted-foreground"}`}
               />
-              {live
-                ? "Live"
-                : error
-                  ? "Reconnecting"
-                  : stale
-                    ? "Delayed"
-                    : "Connecting"}
+              {liveStatus}
             </span>
             <TimeRangePicker
               range={range}
