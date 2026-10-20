@@ -118,27 +118,52 @@ export class MetricsStore {
     return sample;
   }
 
-  processHistory(
+  processHistories(
     window: AbsoluteRange,
-    metric: "cpu" | "memory",
     intervalMs: number,
-  ): ProcessHistory {
+  ): { cpu: ProcessHistory; memory: ProcessHistory } {
     const bucketMs = Math.max(
       1,
       Math.ceil((window.to - window.from + 1) / 360),
     );
-    const series = this.db
-      .query<ProcessHistory["series"][number], [number, number]>(
+    // Aggregate both metrics before looking up process names and PIDs, so each
+    // retained reading is scanned once and identity lookups happen per process.
+    const ranked = this.db
+      .query<
+        ProcessHistory["series"][number] & { metric: "cpu" | "memory" },
+        [number, number]
+      >(
         `
-      SELECT p.id, p.pid, p.name, MAX(r.${metric}) AS peak
-      FROM samples s JOIN process_samples r ON r.sample_id = s.id
-      JOIN processes p ON p.id = r.process_id
-      WHERE s.timestamp >= ? AND s.timestamp <= ? AND r.${metric} > 0
-      GROUP BY p.id ORDER BY peak DESC, p.pid, p.id LIMIT 5
+      WITH peaks AS MATERIALIZED (
+        SELECT r.process_id AS id, MAX(r.cpu) AS cpu, MAX(r.memory) AS memory
+        FROM samples s JOIN process_samples r ON r.sample_id = s.id
+        WHERE s.timestamp >= ? AND s.timestamp <= ?
+        GROUP BY r.process_id
+      )
+      SELECT 'cpu' AS metric, id, pid, name, peak FROM (
+        SELECT p.id, p.pid, p.name, t.cpu AS peak FROM peaks t
+        JOIN processes p ON p.id = t.id WHERE t.cpu > 0
+        ORDER BY peak DESC, p.pid, p.id LIMIT 5
+      ) UNION ALL
+      SELECT 'memory' AS metric, id, pid, name, peak FROM (
+        SELECT p.id, p.pid, p.name, t.memory AS peak FROM peaks t
+        JOIN processes p ON p.id = t.id WHERE t.memory > 0
+        ORDER BY peak DESC, p.pid, p.id LIMIT 5
+      )
     `,
       )
       .all(window.from, window.to);
-    if (!series.length) return { series, points: [] };
+    const series: Record<"cpu" | "memory", ProcessHistory["series"]> = {
+      cpu: [],
+      memory: [],
+    };
+    for (const { metric, ...process } of ranked) series[metric].push(process);
+    if (!ranked.length)
+      return {
+        cpu: { series: [], points: [] },
+        memory: { series: [], points: [] },
+      };
+    // Both charts use the same sample counts and outage boundaries.
     const buckets = this.db
       .query<
         {
@@ -159,51 +184,61 @@ export class MetricsStore {
     `,
       )
       .all(bucketMs, window.from, window.to);
+    const ids = [...new Set(ranked.map((process) => process.id))];
     const rows = this.db
       .query<
         {
           bucket: number;
           id: string;
-          value: number;
-          coverage: number;
+          cpu: number | null;
+          memory: number | null;
+          cpuCoverage: number;
+          memoryCoverage: number;
         },
         (number | string)[]
       >(
         `
       SELECT CAST(s.timestamp / ? AS INTEGER) AS bucket, r.process_id AS id,
-        MAX(r.${metric}) AS value, COUNT(r.${metric}) AS coverage
+        MAX(r.cpu) AS cpu, COUNT(r.cpu) AS cpuCoverage,
+        MAX(r.memory) AS memory, COUNT(r.memory) AS memoryCoverage
       FROM samples s JOIN process_samples r ON r.sample_id = s.id
       WHERE s.timestamp >= ? AND s.timestamp <= ?
-        AND r.process_id IN (${series.map(() => "?").join(",")})
+        AND r.process_id IN (${ids.map(() => "?").join(",")})
       GROUP BY bucket, r.process_id
     `,
       )
-      .all(bucketMs, window.from, window.to, ...series.map((p) => p.id));
+      .all(bucketMs, window.from, window.to, ...ids);
     const values = new Map(rows.map((r) => [`${r.bucket}:${r.id}`, r]));
-    const points: ProcessHistory["points"] = [];
-    let last: number | null = null;
-    for (const bucket of buckets) {
-      // Don't draw a continuous line across a service/collection outage.
-      if (last !== null && bucket.first - last > intervalMs * 2)
+    const build = (metric: "cpu" | "memory"): ProcessHistory => {
+      const lines = series[metric];
+      if (!lines.length) return { series: lines, points: [] };
+      const points: ProcessHistory["points"] = [];
+      let last: number | null = null;
+      for (const bucket of buckets) {
+        // Don't draw a continuous line across a service/collection outage.
+        if (last !== null && bucket.first - last > intervalMs * 2)
+          points.push({
+            timestamp: Math.round((last + bucket.first) / 2),
+            values: lines.map(() => null),
+            coverage: lines.map(() => 0),
+            samples: 0,
+          });
         points.push({
-          timestamp: Math.round((last + bucket.first) / 2),
-          values: series.map(() => null),
-          coverage: series.map(() => 0),
-          samples: 0,
+          timestamp: bucket.timestamp,
+          values: lines.map(
+            (p) => values.get(`${bucket.bucket}:${p.id}`)?.[metric] ?? null,
+          ),
+          coverage: lines.map(
+            (p) =>
+              values.get(`${bucket.bucket}:${p.id}`)?.[`${metric}Coverage`] ?? 0,
+          ),
+          samples: bucket.samples,
         });
-      points.push({
-        timestamp: bucket.timestamp,
-        values: series.map(
-          (p) => values.get(`${bucket.bucket}:${p.id}`)?.value ?? null,
-        ),
-        coverage: series.map(
-          (p) => values.get(`${bucket.bucket}:${p.id}`)?.coverage ?? 0,
-        ),
-        samples: bucket.samples,
-      });
-      last = bucket.last;
-    }
-    return { series, points };
+        last = bucket.last;
+      }
+      return { series: lines, points };
+    };
+    return { cpu: build("cpu"), memory: build("memory") };
   }
 
   summary() {

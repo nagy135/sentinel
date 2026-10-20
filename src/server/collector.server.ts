@@ -227,14 +227,7 @@ export class Collector {
       host: this.host,
       latest: this.store.latest(),
       history: this.store.history(window, now),
-      processes: {
-        cpu: this.store.processHistory(window, "cpu", this.config.intervalMs),
-        memory: this.store.processHistory(
-          window,
-          "memory",
-          this.config.intervalMs,
-        ),
-      },
+      processes: this.store.processHistories(window, this.config.intervalMs),
       storage,
       collector: {
         running: this.running && !this.stopped,
