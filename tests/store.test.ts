@@ -20,6 +20,7 @@ const sample = (timestamp: number, cpu: number | null = 25): Sample => ({
   rx: null,
   tx: null,
   warnings: [],
+  processes: null,
 });
 const stores: MetricsStore[] = [];
 const directories: string[] = [];

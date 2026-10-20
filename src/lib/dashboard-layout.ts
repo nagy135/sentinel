@@ -49,6 +49,16 @@ export const blockCatalog = {
     description: "Receive and send history",
     size: "chart",
   },
+  "process-cpu-history": {
+    title: "Top processes · CPU",
+    description: "Five highest CPU peaks in the selected range",
+    size: "chart",
+  },
+  "process-memory-history": {
+    title: "Top processes · Memory",
+    description: "Five highest memory peaks in the selected range",
+    size: "chart",
+  },
   "storage-history": {
     title: "Storage utilization",
     description: "Primary volume usage over time",

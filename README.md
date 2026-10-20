@@ -20,7 +20,7 @@ Open **http://127.0.0.1:3000**. Login is required; native runs bind to localhost
 
 ## Docker Compose (Linux host monitoring)
 
-[Docker Hub](https://hub.docker.com/r/viktornagy/sentinel): `viktornagy/sentinel:v0.2.0` (Compose default) or `latest`, for AMD64 and ARM64.
+[Docker Hub](https://hub.docker.com/r/viktornagy/sentinel): `viktornagy/sentinel:v0.3.0` (Compose default) or `latest`, for AMD64 and ARM64.
 
 ```sh
 mkdir sentinel && cd sentinel
@@ -75,9 +75,12 @@ For native runs, copy [.env.example](.env.example) to `.env` or pass environment
 
 - CPU total/per-core activity, active RAM and swap, filesystems, network rates/interfaces, uptime, 1/5/15-minute load averages, and CPU temperature in °C when available.
 - Presets from 15 minutes to all history, custom local-time ranges, and synchronized drag-to-zoom. **Undo zoom** steps back; **Reset to live** restores the preset; Escape cancels a selection.
+- **Top processes · CPU / Memory**: five lines by highest recorded peak in the selected range, recalculated on zoom, labelled by name and PID. Add them through **Edit dashboard → Add blocks** on an existing layout.
 - **Edit dashboard** reveals remove buttons and drag handles. **Add blocks** restores hidden blocks by click or drag; arrow keys on handles also reorder. Layout and System/Light/Dark preferences persist in the browser.
 
 All raw samples remain in SQLite; charts average approximately 360 buckets per range and query raw detail again when zoomed. Hiding blocks or changing ranges never stops collection or deletes data. No automatic retention limit is applied.
+
+Process history saves the union of the top **20 CPU and 20 memory** processes per interval (at most 40), with both percentages for each. CPU is a share of total machine capacity; memory is resident RAM / physical RAM (shared pages can overlap). Only executable names, PIDs, and metrics are stored, without command arguments. Process start identities separate reused PIDs. Process charts use bucket **peaks**, show partial sample coverage in tooltips, and recover individual readings/gaps when zoomed. Missing readings stay unknown; older history has no process data. The first CPU observation needs a baseline, and processes that finish between samples can be missed. macOS CPU is the OS's recent-use estimate; Linux uses interval deltas.
 
 Unavailable sensors/readings stay unavailable, including network rates until two samples exist. Load is not a percentage; memory excludes reclaimable cache. APFS capacities are never summed. Network totals include virtual interfaces, so forwarded traffic can be counted more than once. macOS temperature may require an optional native sensor helper.
 
@@ -91,8 +94,8 @@ Set the GitHub repository secret `DOCKERHUB_TOKEN` to a token with write access 
 
 ```sh
 git switch master && git pull --ff-only
-git tag v0.2.0
-git push origin v0.2.0
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
 ## Development

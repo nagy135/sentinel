@@ -67,6 +67,26 @@ export interface Sample {
   disks: DiskMetric[];
   networks: NetworkMetric[];
   warnings: string[];
+  processes: ProcessMetric[] | null;
+}
+
+export interface ProcessMetric {
+  id: string;
+  pid: number;
+  name: string;
+  cpu: number | null;
+  memory: number | null;
+}
+
+export interface ProcessHistory {
+  series: { id: string; pid: number; name: string; peak: number }[];
+  points: {
+    timestamp: number;
+    values: (number | null)[];
+    // Retained readings / system samples in this time bucket, for each line.
+    coverage: number[];
+    samples: number;
+  }[];
 }
 
 export interface HistoryPoint {
@@ -86,6 +106,7 @@ export interface DashboardData {
   host: HostInfo | null;
   latest: Sample | null;
   history: HistoryPoint[];
+  processes: { cpu: ProcessHistory; memory: ProcessHistory };
   storage: {
     count: number;
     first: number | null;

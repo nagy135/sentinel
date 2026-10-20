@@ -57,6 +57,8 @@
   --chart-1: #239b68;
   --chart-2: #6b91ba;
   --chart-3: #ae8245;
+  --chart-4: #9b75b6;
+  --chart-5: #cb7664;
   --radius: 0.75rem;
 }
 
@@ -82,6 +84,8 @@
   --chart-1: #6cdaa4;
   --chart-2: #8caed4;
   --chart-3: #d7ad6f;
+  --chart-4: #bb9cdd;
+  --chart-5: #ee9b86;
 }
 
 @layer base {

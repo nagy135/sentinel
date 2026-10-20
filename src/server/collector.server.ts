@@ -3,6 +3,7 @@ import { loadavg, platform, uptime } from "node:os";
 import { readConfig } from "./config.server";
 import { MetricsStore } from "./store.server";
 import { hostDisks, readHostIdentity } from "./host.server";
+import { ProcessCollector } from "./processes.server";
 import type {
   DashboardData,
   HostInfo,
@@ -34,6 +35,7 @@ export class Collector {
   >();
   private pending: Promise<void> | null = null;
   private stopped = false;
+  private processes = new ProcessCollector();
 
   async start() {
     if (this.running) return;
@@ -84,7 +86,7 @@ export class Collector {
         return null;
       }
     }
-    const [cpu, mem, filesystems, interfaces, traffic, temperature] =
+    const [cpu, mem, filesystems, interfaces, traffic, temperature, processes] =
       await Promise.all([
         read("CPU", () => si.currentLoad()),
         read("Memory", () => si.mem()),
@@ -92,6 +94,7 @@ export class Collector {
         read("Network interfaces", () => si.networkInterfaces()),
         read("Network traffic", () => si.networkStats("*")),
         read("Temperature", () => si.cpuTemperature()),
+        read("Processes", () => this.processes.capture()),
       ]);
     const [one, five, fifteen] = loadavg();
     const timestamp = Date.now();
@@ -182,6 +185,7 @@ export class Collector {
       rx: sum(networks.map((n) => n.rx)),
       tx: sum(networks.map((n) => n.tx)),
       warnings,
+      processes,
     };
   }
 
@@ -223,6 +227,14 @@ export class Collector {
       host: this.host,
       latest: this.store.latest(),
       history: this.store.history(window, now),
+      processes: {
+        cpu: this.store.processHistory(window, "cpu", this.config.intervalMs),
+        memory: this.store.processHistory(
+          window,
+          "memory",
+          this.config.intervalMs,
+        ),
+      },
       storage,
       collector: {
         running: this.running && !this.stopped,

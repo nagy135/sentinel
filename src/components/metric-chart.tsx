@@ -2,6 +2,8 @@ import { useId } from "react";
 import {
   Area,
   AreaChart,
+  Line,
+  LineChart,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -9,16 +11,16 @@ import {
   YAxis,
 } from "recharts";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import type { AbsoluteRange, HistoryPoint } from "@/lib/metrics";
+import type { AbsoluteRange } from "@/lib/metrics";
 import { ChartZoom } from "@/components/chart-zoom";
 import { bytes } from "@/lib/format";
 
-type Series = {
-  key: Exclude<keyof HistoryPoint, "timestamp">;
+type Series<T> = {
+  key: Exclude<keyof T, "timestamp"> & string;
   label: string;
   color: string;
 };
-export function MetricChart({
+export function MetricChart<T extends { timestamp: number }>({
   title,
   description,
   data,
@@ -28,20 +30,29 @@ export function MetricChart({
   window,
   onZoom,
   emptyMessage,
+  emptyHint,
+  variant = "area",
+  autoScale = false,
+  tooltipNote,
   children,
 }: {
   title: string;
   description: string;
-  data: HistoryPoint[];
-  series: Series[];
+  data: T[];
+  series: Series<T>[];
   unit?: "percent" | "bytes" | "load" | "temperature";
   loading?: boolean;
   window?: AbsoluteRange;
   onZoom: (range: AbsoluteRange) => void;
   emptyMessage?: string;
+  emptyHint?: string;
+  variant?: "area" | "line";
+  autoScale?: boolean;
+  tooltipNote?: (point: T, key: string) => string;
   children?: React.ReactNode;
 }) {
   const id = useId().replace(/:/g, "");
+  const Chart = variant === "line" ? LineChart : AreaChart;
   const hasData = data.some((point) =>
     series.some((s) => point[s.key] != null),
   );
@@ -62,16 +73,22 @@ export function MetricChart({
   return (
     <Card className="min-w-0 gap-4 shadow-none">
       <CardHeader className="gap-1 px-5 sm:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div
+          className={`flex flex-wrap gap-2 ${variant === "line" ? "flex-col items-start" : "items-center justify-between"}`}
+        >
           <h2 className="text-sm font-semibold">{title}</h2>
-          <div className="flex gap-3 text-xs text-muted-foreground">
+          <div className="flex max-w-full flex-wrap gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
             {series.map((s) => (
-              <span key={s.key} className="flex items-center gap-1.5">
+              <span
+                key={s.key}
+                className="flex min-w-0 max-w-full items-center gap-1.5"
+                title={s.label}
+              >
                 <span
-                  className="size-1.5 rounded-full"
+                  className="size-1.5 shrink-0 rounded-full"
                   style={{ background: s.color }}
                 />
-                {s.label}
+                <span className="truncate">{s.label}</span>
               </span>
             ))}
           </div>
@@ -86,7 +103,7 @@ export function MetricChart({
         >
           {hasData ? (
             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-              <AreaChart
+              <Chart
                 data={data}
                 margin={{ top: 10, right: 12, bottom: 0, left: 0 }}
                 accessibilityLayer
@@ -146,7 +163,9 @@ export function MetricChart({
                   }
                 />
                 <YAxis
-                  domain={unit === "percent" ? [0, 100] : [0, "auto"]}
+                  domain={
+                    unit === "percent" && !autoScale ? [0, 100] : [0, "auto"]
+                  }
                   width={58}
                   tickLine={false}
                   axisLine={false}
@@ -173,34 +192,57 @@ export function MetricChart({
                   labelFormatter={(value) =>
                     new Date(Number(value)).toLocaleString()
                   }
-                  formatter={(value, name) => [
+                  formatter={(value, name, item) => [
                     typeof value === "number"
-                      ? formatValue(value)
+                      ? `${formatValue(value)}${tooltipNote ? tooltipNote(item.payload as T, String(item.dataKey)) : ""}`
                       : "Unavailable",
                     String(name),
                   ]}
                 />
-                {series.map((s) => (
-                  <Area
-                    key={s.key}
-                    dataKey={s.key}
-                    name={s.label}
-                    type="linear"
-                    stroke={s.color}
-                    strokeWidth={1.8}
-                    fill={`url(#${id}-${s.key})`}
-                    isAnimationActive={false}
-                    dot={data.length === 1 ? { r: 3 } : false}
-                    activeDot={{ r: 4, strokeWidth: 2, stroke: "var(--card)" }}
-                    connectNulls={false}
-                  />
-                ))}
+                {variant === "line"
+                  ? series.map((s) => (
+                      <Line
+                        key={s.key}
+                        dataKey={s.key}
+                        name={s.label}
+                        type="linear"
+                        stroke={s.color}
+                        strokeWidth={1.8}
+                        isAnimationActive={false}
+                        dot={{ r: 1.5, fill: s.color, strokeWidth: 0 }}
+                        activeDot={{
+                          r: 4,
+                          strokeWidth: 2,
+                          stroke: "var(--card)",
+                        }}
+                        connectNulls={false}
+                      />
+                    ))
+                  : series.map((s) => (
+                      <Area
+                        key={s.key}
+                        dataKey={s.key}
+                        name={s.label}
+                        type="linear"
+                        stroke={s.color}
+                        strokeWidth={1.8}
+                        fill={`url(#${id}-${s.key})`}
+                        isAnimationActive={false}
+                        dot={data.length === 1 ? { r: 3 } : false}
+                        activeDot={{
+                          r: 4,
+                          strokeWidth: 2,
+                          stroke: "var(--card)",
+                        }}
+                        connectNulls={false}
+                      />
+                    ))}
                 <ChartZoom
                   title={title}
                   onZoom={onZoom}
                   enabled={!loading && data.length > 1}
                 />
-              </AreaChart>
+              </Chart>
             </ResponsiveContainer>
           ) : (
             <div className="flex h-full flex-col items-center justify-center gap-2 px-3 text-center text-sm text-muted-foreground">
@@ -211,9 +253,10 @@ export function MetricChart({
                   : (emptyMessage ?? "No samples in this time range")}
               </span>
               <span className="text-xs">
-                {emptyMessage
-                  ? "Sensor availability depends on this host."
-                  : "New samples appear automatically."}
+                {emptyHint ??
+                  (emptyMessage
+                    ? "Sensor availability depends on this host."
+                    : "New samples appear automatically.")}
               </span>
             </div>
           )}

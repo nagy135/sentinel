@@ -154,6 +154,26 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     ).toBe(true);
     expect(firstRun.history.some((point) => point.load1 !== null)).toBe(true);
     expect(firstRun.latest?.memory?.total).toBeGreaterThan(0);
+    expect(firstRun.latest?.processes?.length).toBeGreaterThan(0);
+    expect(firstRun.latest?.processes?.length).toBeLessThanOrEqual(40);
+    for (const process of firstRun.latest!.processes!) {
+      expect(Object.keys(process).sort()).toEqual([
+        "cpu",
+        "id",
+        "memory",
+        "name",
+        "pid",
+      ]);
+      expect(process.id).toBeTruthy();
+      expect(process.name).not.toMatch(/\s/);
+      expect(
+        process.memory === null ||
+          (process.memory >= 0 && process.memory <= 100),
+      ).toBe(true);
+    }
+    expect(firstRun.processes.memory.series.length).toBeGreaterThan(0);
+    expect(firstRun.processes.memory.series.length).toBeLessThanOrEqual(5);
+    expect(firstRun.processes.cpu.series.length).toBeLessThanOrEqual(5);
     expect(
       firstRun.storage.last! - firstRun.storage.first!,
     ).toBeGreaterThanOrEqual(1500);
@@ -222,6 +242,10 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     expect(restarted.storage.first).toBe(firstRun.storage.first);
     expect(restarted.collector.error).toBeNull();
     expect(restarted.history.length).toBeGreaterThan(0);
+    expect(restarted.processes.memory.series.length).toBeGreaterThan(0);
+    expect(restarted.processes.memory.points[0].timestamp).toBeLessThanOrEqual(
+      firstRun.storage.last!,
+    );
     // The original cookie must still work: waitFor never signs in again when it exists.
     const remembered = await authenticatedFetch(
       `http://127.0.0.1:${port}/api/metrics`,

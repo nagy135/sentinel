@@ -1,6 +1,6 @@
 services:
   sentinel:
-    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:v0.2.0}
+    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:v0.3.0}
     restart: unless-stopped
     init: true
     ports:

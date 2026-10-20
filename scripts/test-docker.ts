@@ -106,6 +106,21 @@ try {
   );
   assert(first.latest?.load?.one != null, "Load averages were not collected");
   assert(!first.collector.error, "Collector reported an error");
+  assert(
+    first.latest?.processes?.length && first.latest.processes.length <= 40,
+    "Bounded process samples were not collected",
+  );
+  assert(
+    first.processes.memory.series.length > 0 &&
+      first.processes.memory.series.length <= 5,
+    "Process memory history is unavailable",
+  );
+  assert(
+    first.latest.processes.every(
+      (p) => p.id && p.name && !Object.hasOwn(p, "params"),
+    ),
+    "Invalid process identity or command arguments exposed",
+  );
   if (hostMode) {
     const identity = await readHostIdentity("/");
     assert(

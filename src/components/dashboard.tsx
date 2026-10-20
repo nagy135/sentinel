@@ -26,6 +26,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { DashboardGrid } from "@/components/dashboard-grid";
 import type { BlockId } from "@/lib/dashboard-layout";
 import { MetricChart } from "@/components/metric-chart";
+import { ProcessChart } from "@/components/process-chart";
 import { bytes, duration, pct, rate } from "@/lib/format";
 import { type DashboardData, type TimeRange } from "@/lib/metrics";
 import { timeRangeQuery } from "@/lib/time-range";
@@ -373,6 +374,24 @@ export function Dashboard() {
           </span>
         </div>
       </MetricChart>
+    ),
+    "process-cpu-history": (
+      <ProcessChart
+        metric="cpu"
+        history={data?.processes.cpu}
+        window={data?.window}
+        loading={loading}
+        onZoom={changeRange}
+      />
+    ),
+    "process-memory-history": (
+      <ProcessChart
+        metric="memory"
+        history={data?.processes.memory}
+        window={data?.window}
+        loading={loading}
+        onZoom={changeRange}
+      />
     ),
     "network-history": (
       <MetricChart
