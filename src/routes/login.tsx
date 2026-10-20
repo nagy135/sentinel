@@ -46,10 +46,10 @@ function Login() {
     <main className="flex min-h-screen flex-col px-5 py-6 sm:px-8">
       <header className="flex items-center justify-between gap-4">
         <span className="flex items-center gap-2.5 text-lg font-semibold tracking-tight">
-          <span className="flex size-8 items-center justify-center rounded-[10px] bg-primary text-primary-foreground">
+          <span className="flex size-8 items-center justify-center rounded-[10px] bg-brand text-brand-foreground">
             <Activity className="size-4" />
           </span>
-          sentinel<span className="-ml-2 text-primary">.</span>
+          sentinel<span className="-ml-2 text-brand">.</span>
         </span>
         <ThemeSwitcher />
       </header>

@@ -79,7 +79,7 @@ For native runs, copy [.env.example](.env.example) to `.env` or pass environment
 - Green-outlined **Live** summary cards always show the latest readings, independent of chart zoom; delayed readings are labelled accordingly.
 - Presets from 15 minutes to all history, custom local-time ranges, and synchronized drag-to-zoom. **Undo zoom** steps back; **Reset to live** restores the preset; Escape cancels a selection.
 - **Top processes · CPU / Memory**: five lines by highest recorded peak in the selected range, recalculated on zoom, labelled by name and PID. Add them through **Edit dashboard → Add blocks** on an existing layout.
-- **Edit dashboard** reveals remove buttons and drag handles. **Add blocks** restores hidden blocks by click or drag; arrow keys on handles also reorder. Layout and System/Light/Dark preferences persist in the browser.
+- **Edit dashboard** reveals remove buttons and drag handles. **Add blocks** restores hidden blocks by click or drag; arrow keys on handles also reorder. Choose a green, blue, violet, amber, rose, or neutral accent while editing. The logo and live-status indicators stay green. Layout, accent, and System/Light/Dark preferences persist in the browser.
 
 All raw samples remain in SQLite; charts average approximately 360 buckets per range and query raw detail again when zoomed. Hiding blocks or changing ranges never stops collection or deletes data. No automatic retention limit is applied.
 

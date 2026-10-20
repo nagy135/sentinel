@@ -4,7 +4,11 @@ import {
   Outlet,
   Scripts,
 } from "@tanstack/react-router";
-import { ThemeProvider, themeScript } from "@/components/theme-provider";
+import {
+  ThemeProvider,
+  themeScript,
+  accentScript,
+} from "@/components/theme-provider";
 import styles from "@/styles.css?url";
 
 export const Route = createRootRoute({
@@ -28,6 +32,7 @@ export const Route = createRootRoute({
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <script dangerouslySetInnerHTML={{ __html: accentScript }} />
         <HeadContent />
       </head>
       <body>

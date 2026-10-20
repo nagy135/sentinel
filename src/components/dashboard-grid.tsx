@@ -7,6 +7,7 @@ import {
 } from "react";
 import { Check, GripVertical, LayoutGrid, Pencil, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AccentPicker } from "@/components/accent-picker";
 import {
   blockCatalog,
   defaultLayout,
@@ -147,6 +148,7 @@ export function DashboardGrid({
           </Button>
         </div>
       </div>
+      {editing && <AccentPicker />}
       <p className="sr-only" role="status" aria-live="polite">
         {announcement}
       </p>

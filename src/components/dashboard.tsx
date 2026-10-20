@@ -31,8 +31,8 @@ import { bytes, duration, pct, rate } from "@/lib/format";
 import { type DashboardData, type TimeRange } from "@/lib/metrics";
 import { timeRangeQuery } from "@/lib/time-range";
 
-const green = "var(--chart-1)";
-const blue = "var(--chart-2)";
+const primaryChart = "var(--chart-1)";
+const secondaryChart = "var(--chart-2)";
 
 function useMetrics(range: TimeRange) {
   const query = timeRangeQuery(range);
@@ -92,13 +92,13 @@ function Stat({
   return (
     <Card
       data-live-card={label}
-      className={`relative gap-0 py-5 shadow-none ${status === "Live" ? "border-primary/40" : "border-muted-foreground/35"}`}
+      className={`relative gap-0 py-5 shadow-none ${status === "Live" ? "border-success/40" : "border-muted-foreground/35"}`}
     >
       <span
-        className={`absolute -top-2.5 left-4 inline-flex items-center gap-1.5 bg-card px-2 text-[10px] font-semibold tracking-wide uppercase ${status === "Live" ? "text-primary" : "text-muted-foreground"}`}
+        className={`absolute -top-2.5 left-4 inline-flex items-center gap-1.5 bg-card px-2 text-[10px] font-semibold tracking-wide uppercase ${status === "Live" ? "text-success" : "text-muted-foreground"}`}
       >
         <span
-          className={`size-1.5 rounded-full ${status === "Live" ? "bg-primary" : "bg-muted-foreground"}`}
+          className={`size-1.5 rounded-full ${status === "Live" ? "bg-success" : "bg-muted-foreground"}`}
         />
         {status}
       </span>
@@ -354,7 +354,7 @@ export function Dashboard() {
         title="CPU utilization"
         description="Total activity across all processor cores"
         data={history}
-        series={[{ key: "cpu", label: "CPU", color: green }]}
+        series={[{ key: "cpu", label: "CPU", color: primaryChart }]}
         loading={loading}
         window={data?.window}
         onZoom={changeRange}
@@ -385,7 +385,7 @@ export function Dashboard() {
         title="Memory utilization"
         description="Active memory, excluding reclaimable buffers and cache"
         data={history}
-        series={[{ key: "memory", label: "Memory", color: green }]}
+        series={[{ key: "memory", label: "Memory", color: primaryChart }]}
         loading={loading}
         window={data?.window}
         onZoom={changeRange}
@@ -431,8 +431,8 @@ export function Dashboard() {
         data={history}
         unit="bytes"
         series={[
-          { key: "rx", label: "Received", color: green },
-          { key: "tx", label: "Sent", color: blue },
+          { key: "rx", label: "Received", color: primaryChart },
+          { key: "tx", label: "Sent", color: secondaryChart },
         ]}
         loading={loading}
         window={data?.window}
@@ -448,7 +448,7 @@ export function Dashboard() {
             : "Primary volume capacity used"
         }
         data={history}
-        series={[{ key: "disk", label: "Storage", color: green }]}
+        series={[{ key: "disk", label: "Storage", color: primaryChart }]}
         loading={loading}
         window={data?.window}
         onZoom={changeRange}
@@ -519,7 +519,7 @@ export function Dashboard() {
                   className="flex items-center justify-between gap-2 border-b py-3 last:border-0"
                 >
                   <span className="flex min-w-0 items-center gap-2 font-mono text-xs">
-                    <span className="size-1.5 shrink-0 rounded-full bg-primary" />
+                    <span className="size-1.5 shrink-0 rounded-full bg-success" />
                     <span className="truncate">{network.iface}</span>
                   </span>
                   <div className="space-y-1 text-right font-mono text-[10px] tabular-nums">
@@ -575,8 +575,8 @@ export function Dashboard() {
         data={history}
         unit="load"
         series={[
-          { key: "load1", label: "1m", color: green },
-          { key: "load5", label: "5m", color: blue },
+          { key: "load1", label: "1m", color: primaryChart },
+          { key: "load5", label: "5m", color: secondaryChart },
           { key: "load15", label: "15m", color: "var(--chart-3)" },
         ]}
         loading={loading}
@@ -604,7 +604,7 @@ export function Dashboard() {
         description="CPU sensor reading · degrees Celsius"
         data={history}
         unit="temperature"
-        series={[{ key: "temperature", label: "CPU", color: green }]}
+        series={[{ key: "temperature", label: "CPU", color: primaryChart }]}
         loading={loading}
         window={data?.window}
         onZoom={changeRange}
@@ -647,11 +647,11 @@ export function Dashboard() {
             className="flex items-center gap-2.5 font-semibold tracking-tight"
             aria-label="Sentinel home"
           >
-            <span className="flex size-8 items-center justify-center rounded-[10px] bg-primary text-primary-foreground">
+            <span className="flex size-8 items-center justify-center rounded-[10px] bg-brand text-brand-foreground">
               <Activity className="size-4" strokeWidth={2.3} />
             </span>
             <span className="text-lg">
-              sentinel<span className="text-primary">.</span>
+              sentinel<span className="text-brand">.</span>
             </span>
           </a>
           <div className="flex items-center gap-5">
@@ -694,7 +694,7 @@ export function Dashboard() {
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span
-                className={`size-1.5 rounded-full ${live ? "bg-primary" : "bg-muted-foreground"}`}
+                className={`size-1.5 rounded-full ${live ? "bg-success" : "bg-muted-foreground"}`}
               />
               {liveStatus}
             </span>

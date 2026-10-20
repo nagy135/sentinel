@@ -16,6 +16,9 @@
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-success: var(--success);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-muted: var(--muted);
@@ -44,6 +47,9 @@
   --popover-foreground: #1c2422;
   --primary: #18794e;
   --primary-foreground: #ffffff;
+  --brand: #18794e;
+  --brand-foreground: #ffffff;
+  --success: #18794e;
   --secondary: #edf0ef;
   --secondary-foreground: #35433d;
   --muted: #f1f3f2;
@@ -71,6 +77,9 @@
   --popover-foreground: #e5ece8;
   --primary: #6cdaa4;
   --primary-foreground: #102b1d;
+  --brand: #6cdaa4;
+  --brand-foreground: #102b1d;
+  --success: #6cdaa4;
   --secondary: #242d28;
   --secondary-foreground: #d8e3dd;
   --muted: #1d2521;
@@ -86,6 +95,89 @@
   --chart-3: #d7ad6f;
   --chart-4: #bb9cdd;
   --chart-5: #ee9b86;
+}
+
+/* Keep the default green theme; other accents use neutral surfaces. */
+:root:where([data-accent]:not([data-accent="green"])) {
+  --background: #f7f8f9;
+  --foreground: #202428;
+  --card-foreground: #202428;
+  --popover-foreground: #202428;
+  --secondary: #edf0f2;
+  --secondary-foreground: #38414a;
+  --muted: #f1f3f5;
+  --muted-foreground: #68717b;
+  --border: #e3e7eb;
+  --input: #dce2e8;
+  --primary-foreground: #ffffff;
+  --accent: color-mix(in srgb, var(--primary) 9%, var(--card));
+  --accent-foreground: var(--primary);
+  --ring: var(--primary);
+  --chart-1: var(--primary);
+  --chart-2: #1d62c6;
+  --chart-3: #966015;
+  --chart-4: #7545b8;
+  --chart-5: #b83e65;
+}
+
+:root.dark:where([data-accent]:not([data-accent="green"])) {
+  --background: #111316;
+  --foreground: #e5e9ee;
+  --card: #191c20;
+  --card-foreground: #e5e9ee;
+  --popover: #20242a;
+  --popover-foreground: #e5e9ee;
+  --secondary: #272d34;
+  --secondary-foreground: #d9e1ea;
+  --muted: #20252b;
+  --muted-foreground: #a0aab5;
+  --border: #30373f;
+  --input: #3a444f;
+  --primary-foreground: #111316;
+  --accent: color-mix(in srgb, var(--primary) 15%, var(--card));
+  --chart-2: #8caed4;
+  --chart-3: #d7ad6f;
+  --chart-4: #bb9cdd;
+  --chart-5: #ee9b86;
+}
+
+:root[data-accent="blue"] {
+  --primary: #1d62c6;
+  --chart-2: #18794e;
+}
+:root.dark[data-accent="blue"] {
+  --primary: #8cb8f8;
+  --chart-2: #6cdaa4;
+}
+:root[data-accent="violet"] {
+  --primary: #7545b8;
+  --chart-4: #18794e;
+}
+:root.dark[data-accent="violet"] {
+  --primary: #c0a2f3;
+  --chart-4: #6cdaa4;
+}
+:root[data-accent="amber"] {
+  --primary: #966015;
+  --chart-3: #18794e;
+}
+:root.dark[data-accent="amber"] {
+  --primary: #e8bc75;
+  --chart-3: #6cdaa4;
+}
+:root[data-accent="rose"] {
+  --primary: #b83e65;
+  --chart-5: #18794e;
+}
+:root.dark[data-accent="rose"] {
+  --primary: #f19bb5;
+  --chart-5: #6cdaa4;
+}
+:root[data-accent="neutral"] {
+  --primary: #40464e;
+}
+:root.dark[data-accent="neutral"] {
+  --primary: #e5e9ee;
 }
 
 @layer base {
