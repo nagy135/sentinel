@@ -199,7 +199,7 @@
 :root:where([data-surface]) {
   --surface-hue: 260;
   --surface-chroma: 0.05;
-  --background: oklch(0.96 var(--surface-chroma) var(--surface-hue));
+  --background: oklch(0.97 var(--surface-chroma) var(--surface-hue));
   --foreground: oklch(0.22 calc(var(--surface-chroma) * 0.5) var(--surface-hue));
   --card: oklch(0.98 calc(var(--surface-chroma) * 0.3) var(--surface-hue));
   --card-foreground: var(--foreground);
