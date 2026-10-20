@@ -10,12 +10,14 @@ import {
   Database,
   HardDrive,
   MemoryStick,
+  LogOut,
   Monitor,
   Network,
   Radio,
   Server,
   Terminal,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -45,6 +47,10 @@ function useMetrics(range: TimeRange) {
           signal: abort.signal,
           cache: "no-store",
         });
+        if (response.status === 401) {
+          window.location.replace("/login");
+          return;
+        }
         if (!response.ok)
           throw new Error("Could not reach the metrics service.");
         const next: DashboardData = await response.json();
@@ -113,6 +119,20 @@ function Info({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export function Dashboard() {
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  async function signOut() {
+    setSigningOut(true);
+    setLogoutError(null);
+    try {
+      const response = await fetch("/api/auth/logout", { method: "POST" });
+      if (!response.ok) throw new Error("Could not sign out. Try again.");
+      window.location.replace("/login");
+    } catch {
+      setLogoutError("Could not sign out. Try again.");
+      setSigningOut(false);
+    }
+  }
   const [range, setRange] = useState<TimeRange>("1h");
   const [zoomHistory, setZoomHistory] = useState<TimeRange[]>([]);
   function changeRange(next: TimeRange) {
@@ -160,6 +180,7 @@ export function Dashboard() {
     sample?.disks.find((d) => d.mount === "/") ??
     sample?.disks[0];
   const warnings = [
+    logoutError,
     error,
     data?.collector.error,
     ...(sample?.warnings ?? []),
@@ -589,6 +610,16 @@ export function Dashboard() {
               {host?.hostname ?? "Local host"}
             </span>
             <ThemeSwitcher />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Sign out"
+              title="Sign out"
+              disabled={signingOut}
+              onClick={() => void signOut()}
+            >
+              <LogOut className="size-4" />
+            </Button>
           </div>
         </div>
       </header>

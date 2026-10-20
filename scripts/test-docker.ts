@@ -16,9 +16,15 @@ const reservation = hostMode
   : null;
 const hostPort = reservation?.port;
 reservation?.stop(true);
+const username = "sentinel-docker-test";
+const password = crypto.randomUUID();
+let cookie = "";
 const env = {
   ...process.env,
   SENTINEL_IMAGE: image,
+  SENTINEL_USERNAME: username,
+  SENTINEL_PASSWORD: password,
+  SENTINEL_PUBLIC_URL: "",
   SENTINEL_PORT: String(hostPort ?? 0),
   SENTINEL_INTERVAL_MS: "1000",
 };
@@ -56,7 +62,17 @@ async function waitFor(
     try {
       const response = await fetch(`${url}/api/metrics?range=all`, {
         signal: AbortSignal.timeout(3000),
+        headers: cookie ? { Cookie: cookie } : {},
       });
+      if (response.status === 401 && !cookie) {
+        const loggedIn = await fetch(`${url}/api/auth/login`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Origin: url },
+          body: JSON.stringify({ username, password }),
+        });
+        assert(loggedIn.status === 204, "Container login failed");
+        cookie = loggedIn.headers.get("set-cookie")!.split(";")[0];
+      }
       if (response.ok) {
         const data: DashboardData = await response.json();
         if (predicate(data)) return data;
@@ -115,7 +131,11 @@ try {
       "Container mount prefix leaked into host volume paths",
     );
   }
-  const page = await fetch(url);
+  assert(
+    (await fetch(`${url}/api/metrics`)).status === 401,
+    "Anonymous metrics must be denied",
+  );
+  const page = await fetch(url, { headers: { Cookie: cookie } });
   assert(page.ok, "Dashboard did not respond");
   const html = await page.text();
   const css = html.match(/\/assets\/[^"\s<>]+\.css/)?.[0];
@@ -162,7 +182,7 @@ try {
   );
   assert(!restarted.collector.error, "Collector failed after recreation");
   console.log(
-    `Docker Compose ${hostMode ? "host" : "container"} smoke test passed: non-root runtime, localhost access, assets, health check, and ${restarted.storage.count} persisted samples.`,
+    `Docker Compose ${hostMode ? "host" : "container"} smoke test passed: login persistence, non-root runtime, localhost access, assets, health check, and ${restarted.storage.count} persisted samples.`,
   );
 } finally {
   await run([...compose, "logs", "--tail", "30"]).catch(() => {});

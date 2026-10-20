@@ -1,11 +1,14 @@
 services:
   sentinel:
-    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:latest}
+    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:v0.2.0}
     restart: unless-stopped
     init: true
     ports:
       - "127.0.0.1:${SENTINEL_PORT:-3000}:3000"
     environment:
+      SENTINEL_USERNAME: ${SENTINEL_USERNAME:?Set SENTINEL_USERNAME in .env}
+      SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:?Set SENTINEL_PASSWORD in .env}
+      SENTINEL_PUBLIC_URL: ${SENTINEL_PUBLIC_URL:-}
       PORT: "3000"
       SENTINEL_HOST: "0.0.0.0"
       SENTINEL_INTERVAL_MS: ${SENTINEL_INTERVAL_MS:-5000}

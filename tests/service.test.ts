@@ -5,6 +5,31 @@ import { join } from "node:path";
 import type { DashboardData } from "../src/lib/metrics";
 
 const production = process.env.SENTINEL_TEST_PRODUCTION === "1";
+test("refuses to start without private credentials", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "sentinel-unconfigured-"));
+  try {
+    const service = Bun.spawn(
+      ["bun", production ? "scripts/start.ts" : "scripts/dev.ts"],
+      {
+        cwd: join(import.meta.dir, ".."),
+        env: {
+          ...process.env,
+          SENTINEL_USERNAME: "",
+          SENTINEL_PASSWORD: "",
+          SENTINEL_DB_PATH: join(directory, "metrics.sqlite"),
+        },
+        stdout: "ignore",
+        stderr: "pipe",
+      },
+    );
+    const errors = await new Response(service.stderr).text();
+    expect(await service.exited).toBe(1);
+    expect(errors).toContain("Set SENTINEL_USERNAME and SENTINEL_PASSWORD");
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}, 15000);
+
 test(`${production ? "production" : "dev"} command collects without a browser and retains history after a restart`, async () => {
   const directory = mkdtempSync(join(tmpdir(), "sentinel-service-"));
   const reservation = Bun.serve({
@@ -14,9 +39,20 @@ test(`${production ? "production" : "dev"} command collects without a browser an
   });
   const port = reservation.port!;
   reservation.stop(true);
+  const username = "sentinel-test";
+  const password = crypto.randomUUID();
+  let cookie = "";
+  async function authenticatedFetch(input: string, init: RequestInit = {}) {
+    const headers = new Headers(init.headers);
+    if (cookie) headers.set("Cookie", cookie);
+    return fetch(input, { ...init, headers });
+  }
   const env = {
     ...process.env,
     PORT: String(port),
+    SENTINEL_USERNAME: username,
+    SENTINEL_PASSWORD: password,
+    SENTINEL_PUBLIC_URL: "",
     SENTINEL_INTERVAL_MS: "1000",
     SENTINEL_DB_PATH: join(directory, "history.sqlite"),
   };
@@ -42,9 +78,24 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       if (service.exitCode !== null)
         throw new Error(await new Response(service.stderr).text());
       try {
-        const response = await fetch(
+        const response = await authenticatedFetch(
           `http://127.0.0.1:${port}/api/metrics?range=all`,
         );
+        if (response.status === 401 && !cookie) {
+          const loggedIn = await fetch(
+            `http://127.0.0.1:${port}/api/auth/login`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Origin: `http://127.0.0.1:${port}`,
+              },
+              body: JSON.stringify({ username, password }),
+            },
+          );
+          expect(loggedIn.status).toBe(204);
+          cookie = loggedIn.headers.get("set-cookie")!.split(";")[0];
+        }
         if (response.ok) {
           const data: DashboardData = await response.json();
           if (predicate(data)) return data;
@@ -60,6 +111,35 @@ test(`${production ? "production" : "dev"} command collects without a browser an
   }
   try {
     const firstRun = await waitFor((data) => data.storage.count >= 3);
+    const anonymous = await fetch(`http://127.0.0.1:${port}/api/metrics`);
+    expect(anonymous.status).toBe(401);
+    expect(await anonymous.text()).not.toContain(firstRun.host!.hostname);
+    const pageRedirect = await fetch(`http://127.0.0.1:${port}/`, {
+      redirect: "manual",
+    });
+    expect(pageRedirect.status).toBe(302);
+    expect(pageRedirect.headers.get("location")).toBe("/login");
+    const loginPage = await fetch(`http://127.0.0.1:${port}/login`);
+    expect(await loginPage.text()).toContain("Sign in");
+    const badLogin = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: `http://127.0.0.1:${port}`,
+      },
+      body: JSON.stringify({ username, password: "incorrect" }),
+    });
+    expect(badLogin.status).toBe(401);
+    const crossSite = await fetch(`http://127.0.0.1:${port}/api/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: "https://other.example",
+      },
+      body: JSON.stringify({ username, password }),
+    });
+    expect(crossSite.status).toBe(403);
+    expect((await fetch(`http://127.0.0.1:${port}/healthz`)).status).toBe(200);
     expect(firstRun.collector.intervalMs).toBe(1000);
     expect(firstRun.collector.running).toBe(true);
     expect(firstRun.collector.error).toBeNull();
@@ -77,13 +157,13 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     expect(
       firstRun.storage.last! - firstRun.storage.first!,
     ).toBeGreaterThanOrEqual(1500);
-    const invalid = await fetch(
+    const invalid = await authenticatedFetch(
       `http://127.0.0.1:${port}/api/metrics?range=toString`,
     );
     expect(invalid.status).toBe(400);
     const from = firstRun.storage.first!;
     const to = firstRun.storage.last!;
-    const selected = await fetch(
+    const selected = await authenticatedFetch(
       `http://127.0.0.1:${port}/api/metrics?range=custom&from=${from}&to=${to}`,
     );
     expect(selected.status).toBe(200);
@@ -102,25 +182,36 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       "range=1h&from=0&to=2",
     ]) {
       expect(
-        (await fetch(`http://127.0.0.1:${port}/api/metrics?${query}`)).status,
+        (
+          await authenticatedFetch(
+            `http://127.0.0.1:${port}/api/metrics?${query}`,
+          )
+        ).status,
       ).toBe(400);
     }
     if (production) {
-      const page = await fetch(`http://127.0.0.1:${port}/`);
+      const page = await authenticatedFetch(`http://127.0.0.1:${port}/`);
       expect(page.status).toBe(200);
       const html = await page.text();
       const asset = html.match(/\/assets\/[^"\s<>]+\.css/)?.[0];
       expect(asset).toBeTruthy();
-      const stylesheet = await fetch(`http://127.0.0.1:${port}${asset}`);
+      const stylesheet = await authenticatedFetch(
+        `http://127.0.0.1:${port}${asset}`,
+      );
       expect(stylesheet.status).toBe(200);
       expect(stylesheet.headers.get("content-type")).toContain("text/css");
       expect(stylesheet.headers.get("cache-control")).toContain("immutable");
-      const head = await fetch(`http://127.0.0.1:${port}${asset}`, {
-        method: "HEAD",
-      });
+      const head = await authenticatedFetch(
+        `http://127.0.0.1:${port}${asset}`,
+        {
+          method: "HEAD",
+        },
+      );
       expect(head.status).toBe(200);
       expect(await head.text()).toBe("");
-      const privateFile = await fetch(`http://127.0.0.1:${port}/package.json`);
+      const privateFile = await authenticatedFetch(
+        `http://127.0.0.1:${port}/package.json`,
+      );
       expect(privateFile.status).toBe(404);
     }
     await stop();
@@ -131,6 +222,27 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     expect(restarted.storage.first).toBe(firstRun.storage.first);
     expect(restarted.collector.error).toBeNull();
     expect(restarted.history.length).toBeGreaterThan(0);
+    // The original cookie must still work: waitFor never signs in again when it exists.
+    const remembered = await authenticatedFetch(
+      `http://127.0.0.1:${port}/api/metrics`,
+    );
+    expect(remembered.status).toBe(200);
+    const renewed = remembered.headers.get("set-cookie");
+    expect(renewed).toContain("HttpOnly");
+    expect(renewed).toContain("SameSite=Lax");
+    expect(renewed).toContain("Max-Age=34560000");
+    const signedOut = await authenticatedFetch(
+      `http://127.0.0.1:${port}/api/auth/logout`,
+      {
+        method: "POST",
+        headers: { Origin: `http://127.0.0.1:${port}` },
+      },
+    );
+    expect(signedOut.status).toBe(204);
+    expect(signedOut.headers.get("set-cookie")).toContain("Max-Age=0");
+    expect(
+      (await authenticatedFetch(`http://127.0.0.1:${port}/api/metrics`)).status,
+    ).toBe(401);
   } finally {
     await stop();
     rmSync(directory, { recursive: true, force: true });

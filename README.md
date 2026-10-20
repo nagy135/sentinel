@@ -8,6 +8,7 @@ Requires [Bun](https://bun.sh) 1.4.2. The server and collector start together; c
 
 ```sh
 bun install
+cp .env.example .env # set SENTINEL_USERNAME and SENTINEL_PASSWORD privately
 bun run dev
 
 # Production
@@ -15,15 +16,17 @@ bun run build
 bun start
 ```
 
-Open **http://127.0.0.1:3000**. Authentication is not included; native runs bind to localhost by default. For production, keep `SENTINEL_DB_PATH` outside the checkout.
+Open **http://127.0.0.1:3000**. Login is required; native runs bind to localhost by default. For production, keep `SENTINEL_DB_PATH` outside the checkout.
 
 ## Docker Compose (Linux host monitoring)
 
-[Docker Hub](https://hub.docker.com/r/viktornagy/sentinel): `viktornagy/sentinel:latest` or a pinned release such as `v0.1.0`, for AMD64 and ARM64.
+[Docker Hub](https://hub.docker.com/r/viktornagy/sentinel): `viktornagy/sentinel:v0.2.0` (Compose default) or `latest`, for AMD64 and ARM64.
 
 ```sh
 mkdir sentinel && cd sentinel
 curl -fsSLo compose.yml https://raw.githubusercontent.com/nagy135/sentinel/master/compose.yml
+${EDITOR:-vi} .env # set SENTINEL_USERNAME and SENTINEL_PASSWORD
+chmod 600 .env
 docker compose pull
 docker compose up -d
 ```
@@ -43,6 +46,16 @@ docker build -t sentinel:local .
 SENTINEL_IMAGE=sentinel:local docker compose up -d --pull never
 ```
 
+## Login
+
+**Authentication requires v0.2.0 or newer; v0.1.0 does not enforce login.**
+
+Set **`SENTINEL_USERNAME`** and **`SENTINEL_PASSWORD`** in a private environment file before starting; missing values prevent startup. Never commit this file. Compose requires both variables in its adjacent `.env`. For an HTTPS reverse proxy, also set `SENTINEL_PUBLIC_URL=https://your-domain` so origin checks and Secure cookies use the external URL.
+
+The dashboard and metrics API require login. The browser stores an opaque **HttpOnly, SameSite** cookie, never your password; HTTPS adds Secure. Its 400-day lifetime renews automatically during use. Sessions persist through restarts/upgrades in `<SENTINEL_DB_PATH>.auth.sqlite`, containing hashed session tokens and an Argon2id password hash. Keep this file with the metrics database. Changing either credential revokes existing sessions on restart; signing out revokes that browser's session. Clearing cookies, switching browsers, or browser storage expiry also requires login. `/healthz` exposes only service health.
+
+For nixpi's native systemd service, the private file is **`/etc/sentinel/credentials.env`**, owned by root with mode `0600`; the Nix service loads it through `EnvironmentFile`. Put only the two credential variables there. `SENTINEL_PUBLIC_URL` is configured in Nix. Edit credentials directly on the host, outside Git and the Nix store.
+
 ## Configuration
 
 For native runs, copy [.env.example](.env.example) to `.env` or pass environment variables. Restart after changing settings.
@@ -53,6 +66,9 @@ For native runs, copy [.env.example](.env.example) to `.env` or pass environment
 | `SENTINEL_INTERVAL_MS` | `5000`                   | Collection interval in ms; integer ≥ 1000.                                                                      |
 | `SENTINEL_DB_PATH`     | `./data/sentinel.sqlite` | SQLite path; Compose uses `/data/sentinel.sqlite`.                                                              |
 | `SENTINEL_HOST`        | `127.0.0.1`              | Bind address: `127.0.0.1` or `0.0.0.0`. The image defaults to the latter; host-mode Compose restores localhost. |
+| `SENTINEL_USERNAME`    | Required                 | Login username.                                                                                                 |
+| `SENTINEL_PASSWORD`    | Required                 | Login password; keep private.                                                                                   |
+| `SENTINEL_PUBLIC_URL`  | Request origin           | External HTTP(S) origin; set for HTTPS proxies.                                                                 |
 | `SENTINEL_HOST_ROOT`   | Unset                    | Read-only Linux host root; host-mode Compose sets `/host`.                                                      |
 
 ## Dashboard & history
@@ -65,7 +81,7 @@ All raw samples remain in SQLite; charts average approximately 360 buckets per r
 
 Unavailable sensors/readings stay unavailable, including network rates until two samples exist. Load is not a percentage; memory excludes reclaimable cache. APFS capacities are never summed. Network totals include virtual interfaces, so forwarded traffic can be counted more than once. macOS temperature may require an optional native sensor helper.
 
-Read-only API: `GET /api/metrics?range=1h` (presets: `15m`, `1h`, `6h`, `24h`, `7d`, `all`), or `?range=custom&from=<epoch-ms>&to=<epoch-ms>` with inclusive bounds. Invalid ranges return 400.
+Authenticated metrics API: `GET /api/metrics?range=1h` (presets: `15m`, `1h`, `6h`, `24h`, `7d`, `all`), or `?range=custom&from=<epoch-ms>&to=<epoch-ms>` with inclusive bounds. Invalid ranges return 400.
 
 ## Image releases
 
@@ -75,8 +91,8 @@ Set the GitHub repository secret `DOCKERHUB_TOKEN` to a token with write access 
 
 ```sh
 git switch master && git pull --ff-only
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.2.0
+git push origin v0.2.0
 ```
 
 ## Development

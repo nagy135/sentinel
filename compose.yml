@@ -1,13 +1,16 @@
 # Linux host monitoring. Use compose.container.yml for an ordinary container.
 services:
   sentinel:
-    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:latest}
+    image: ${SENTINEL_IMAGE:-viktornagy/sentinel:v0.2.0}
     restart: unless-stopped
     init: true
     network_mode: host
     pid: host
     uts: host
     environment:
+      SENTINEL_USERNAME: ${SENTINEL_USERNAME:?Set SENTINEL_USERNAME in .env}
+      SENTINEL_PASSWORD: ${SENTINEL_PASSWORD:?Set SENTINEL_PASSWORD in .env}
+      SENTINEL_PUBLIC_URL: ${SENTINEL_PUBLIC_URL:-}
       PORT: ${SENTINEL_PORT:-3000}
       SENTINEL_HOST: "127.0.0.1"
       SENTINEL_HOST_ROOT: /host

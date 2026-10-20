@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import { relative, sep } from "node:path";
+import { closeAuth, getAuth } from "../src/server/auth.server";
 import { getCollector } from "../src/server/collector.server";
 
 const clientDirectory = fileURLToPath(
@@ -27,11 +28,13 @@ async function shutdown() {
   shuttingDown = true;
   await server?.stop();
   await collector.stop();
+  await closeAuth();
 }
 process.once("SIGINT", () => void shutdown());
 process.once("SIGTERM", () => void shutdown());
 
 try {
+  await getAuth().ready;
   await collector.start();
   if (!shuttingDown) {
     server = Bun.serve({

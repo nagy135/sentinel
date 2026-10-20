@@ -1,4 +1,5 @@
 import { createServer } from "vite";
+import { closeAuth, getAuth } from "../src/server/auth.server";
 import { getCollector } from "../src/server/collector.server";
 
 const collector = getCollector();
@@ -9,11 +10,13 @@ async function shutdown() {
   shuttingDown = true;
   await vite.close();
   await collector.stop();
+  await closeAuth();
 }
 process.once("SIGINT", () => void shutdown());
 process.once("SIGTERM", () => void shutdown());
 
 try {
+  await getAuth().ready;
   await collector.start();
   await vite.listen();
   console.log(`\n  Sentinel · ${collector.host?.hostname}`);
