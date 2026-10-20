@@ -1,3 +1,5 @@
+![Sentinel system overview dashboard](docs/images/dashboard.png)
+
 # Sentinel
 
 Self-hosted Linux/macOS system metrics with automatic host detection, live graphs, and SQLite history. Built with Bun, TanStack Start, React, TypeScript, and `systeminformation`.
