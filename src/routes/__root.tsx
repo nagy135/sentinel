@@ -8,6 +8,7 @@ import {
   ThemeProvider,
   themeScript,
   accentScript,
+  surfaceScript,
 } from "@/components/theme-provider";
 import styles from "@/styles.css?url";
 
@@ -33,6 +34,7 @@ export const Route = createRootRoute({
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: accentScript }} />
+        <script dangerouslySetInnerHTML={{ __html: surfaceScript }} />
         <HeadContent />
       </head>
       <body>

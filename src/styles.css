@@ -97,20 +97,10 @@
   --chart-5: #ee9b86;
 }
 
-/* Keep the default green theme; other accents use neutral surfaces. */
+/* Accent controls stay independent from the page and card colors. */
 :root:where([data-accent]:not([data-accent="green"])) {
-  --background: #f7f8f9;
-  --foreground: #202428;
-  --card-foreground: #202428;
-  --popover-foreground: #202428;
-  --secondary: #edf0f2;
-  --secondary-foreground: #38414a;
-  --muted: #f1f3f5;
-  --muted-foreground: #68717b;
-  --border: #e3e7eb;
-  --input: #dce2e8;
   --primary-foreground: #ffffff;
-  --accent: color-mix(in srgb, var(--primary) 9%, var(--card));
+  --accent: color-mix(in srgb, var(--primary) 5%, var(--card));
   --accent-foreground: var(--primary);
   --ring: var(--primary);
   --chart-1: var(--primary);
@@ -121,18 +111,6 @@
 }
 
 :root.dark:where([data-accent]:not([data-accent="green"])) {
-  --background: #111316;
-  --foreground: #e5e9ee;
-  --card: #191c20;
-  --card-foreground: #e5e9ee;
-  --popover: #20242a;
-  --popover-foreground: #e5e9ee;
-  --secondary: #272d34;
-  --secondary-foreground: #d9e1ea;
-  --muted: #20252b;
-  --muted-foreground: #a0aab5;
-  --border: #30373f;
-  --input: #3a444f;
   --primary-foreground: #111316;
   --accent: color-mix(in srgb, var(--primary) 15%, var(--card));
   --chart-2: #8caed4;
@@ -178,6 +156,110 @@
 }
 :root.dark[data-accent="neutral"] {
   --primary: #e5e9ee;
+}
+
+:root[data-accent="teal"] {
+  --primary: #0d756c;
+}
+:root.dark[data-accent="teal"] {
+  --primary: #68d8c8;
+}
+:root[data-accent="cyan"] {
+  --primary: #0c708d;
+}
+:root.dark[data-accent="cyan"] {
+  --primary: #6ed3ed;
+}
+:root[data-accent="indigo"] {
+  --primary: #4f50b5;
+}
+:root.dark[data-accent="indigo"] {
+  --primary: #a9aaff;
+}
+:root[data-accent="pink"] {
+  --primary: #a83c89;
+}
+:root.dark[data-accent="pink"] {
+  --primary: #eaa0d2;
+}
+:root[data-accent="orange"] {
+  --primary: #ae5018;
+}
+:root.dark[data-accent="orange"] {
+  --primary: #efaa75;
+}
+:root[data-accent="lime"] {
+  --primary: #4e741c;
+}
+:root.dark[data-accent="lime"] {
+  --primary: #b0d86c;
+}
+
+/* Shared lightness keeps every surface palette readable with any accent. */
+:root:where([data-surface]) {
+  --surface-hue: 260;
+  --surface-chroma: 0.05;
+  --background: oklch(0.96 var(--surface-chroma) var(--surface-hue));
+  --foreground: oklch(0.22 calc(var(--surface-chroma) * 0.5) var(--surface-hue));
+  --card: oklch(0.98 calc(var(--surface-chroma) * 0.3) var(--surface-hue));
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary: oklch(0.89 var(--surface-chroma) var(--surface-hue));
+  --secondary-foreground: var(--foreground);
+  --muted: oklch(0.91 calc(var(--surface-chroma) * 0.8) var(--surface-hue));
+  --muted-foreground: oklch(0.43 calc(var(--surface-chroma) * 0.5) var(--surface-hue));
+  --border: oklch(0.81 calc(var(--surface-chroma) * 0.8) var(--surface-hue));
+  --input: var(--border);
+}
+
+:root.dark:where([data-surface]) {
+  --background: oklch(0.17 calc(var(--surface-chroma) * 0.8) var(--surface-hue));
+  --foreground: oklch(0.94 calc(var(--surface-chroma) * 0.3) var(--surface-hue));
+  --card: oklch(0.23 calc(var(--surface-chroma) * 0.8) var(--surface-hue));
+  --popover: oklch(0.27 calc(var(--surface-chroma) * 0.8) var(--surface-hue));
+  --secondary: oklch(0.30 var(--surface-chroma) var(--surface-hue));
+  --muted: oklch(0.26 calc(var(--surface-chroma) * 0.8) var(--surface-hue));
+  --muted-foreground: oklch(0.74 calc(var(--surface-chroma) * 0.4) var(--surface-hue));
+  --border: oklch(0.36 var(--surface-chroma) var(--surface-hue));
+  --input: oklch(0.42 var(--surface-chroma) var(--surface-hue));
+}
+
+:root[data-surface="green"] {
+  --surface-hue: 155;
+}
+:root[data-surface="blue"] {
+  --surface-hue: 255;
+}
+:root[data-surface="violet"] {
+  --surface-hue: 300;
+}
+:root[data-surface="amber"] {
+  --surface-hue: 80;
+}
+:root[data-surface="rose"] {
+  --surface-hue: 5;
+}
+:root[data-surface="teal"] {
+  --surface-hue: 185;
+}
+:root[data-surface="cyan"] {
+  --surface-hue: 225;
+}
+:root[data-surface="indigo"] {
+  --surface-hue: 275;
+}
+:root[data-surface="pink"] {
+  --surface-hue: 330;
+}
+:root[data-surface="orange"] {
+  --surface-hue: 50;
+}
+:root[data-surface="lime"] {
+  --surface-hue: 125;
+}
+:root[data-surface="neutral"] {
+  --surface-chroma: 0;
 }
 
 @layer base {
