@@ -103,6 +103,7 @@ export function RefreshPicker({
   }
   return (
     <div className="flex shrink-0 items-center gap-2">
+      <RefreshCountdown seconds={seconds} nextRefreshAt={nextRefreshAt} />
       <Select
         value={String(seconds)}
         onValueChange={(value) => {
@@ -138,7 +139,6 @@ export function RefreshPicker({
           </SelectItem>
         </SelectContent>
       </Select>
-      <RefreshCountdown seconds={seconds} nextRefreshAt={nextRefreshAt} />
       <Dialog.Root open={open} onOpenChange={setOpen}>
         <Dialog.Portal>
           <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40" />
