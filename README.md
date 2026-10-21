@@ -4,6 +4,8 @@
 
 Self-hosted Linux/macOS system metrics with automatic host detection, live graphs, and SQLite history. Built with Bun, TanStack Start, React, TypeScript, and `systeminformation`.
 
+Run Sentinel [locally with Bun](#run-locally) or [with Docker Compose](#docker-compose-linux-host-monitoring). You can also [add the Compose service to an existing project's deployment](docs/docker-compose.md).
+
 ## Run locally
 
 Requires [Bun](https://bun.sh) 1.4.2. The server and collector start together; collection continues without an open browser.
@@ -21,6 +23,8 @@ bun start
 Open **http://127.0.0.1:3000**. Login is required; native runs bind to localhost by default. For production, keep `SENTINEL_DB_PATH` outside the checkout.
 
 ## Docker Compose (Linux host monitoring)
+
+Run Sentinel as a standalone Compose stack using the steps below, or follow the [project setup guide](docs/docker-compose.md) for a complete service example and instructions for adding it alongside an existing application. Both use the service in [compose.yml](compose.yml).
 
 [Docker Hub](https://hub.docker.com/r/viktornagy/sentinel): `viktornagy/sentinel:v0.3.1` (Compose default) or `latest`, for AMD64 and ARM64.
 
