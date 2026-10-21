@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { TimeRangePicker } from "@/components/time-range-picker";
+import { RefreshPicker, useRefreshInterval } from "@/components/refresh-picker";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { DashboardGrid } from "@/components/dashboard-grid";
 import type { BlockId } from "@/lib/dashboard-layout";
@@ -34,15 +35,18 @@ import { timeRangeQuery } from "@/lib/time-range";
 const primaryChart = "var(--chart-1)";
 const secondaryChart = "var(--chart-2)";
 
-function useMetrics(range: TimeRange) {
+function useMetrics(range: TimeRange, refreshSeconds: number | null) {
   const query = timeRangeQuery(range);
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
+  const [receivedAt, setReceivedAt] = useState(0);
   useEffect(() => {
+    if (refreshSeconds === null) return;
     const abort = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
-      let delay = 5000;
+      setNextRefreshAt(null);
       try {
         const response = await fetch(`/api/metrics?${query}`, {
           signal: abort.signal,
@@ -57,21 +61,25 @@ function useMetrics(range: TimeRange) {
         const next: DashboardData = await response.json();
         if (abort.signal.aborted) return;
         setData(next);
+        setReceivedAt(Date.now());
         setError(null);
-        delay = next.collector.intervalMs;
       } catch (error) {
         if (!abort.signal.aborted)
           setError(error instanceof Error ? error.message : "Connection lost.");
       }
-      if (!abort.signal.aborted) timer = setTimeout(() => void poll(), delay);
+      if (!abort.signal.aborted) {
+        const delay = refreshSeconds * 1000;
+        setNextRefreshAt(Date.now() + delay);
+        timer = setTimeout(() => void poll(), delay);
+      }
     };
     void poll();
     return () => {
       abort.abort();
       clearTimeout(timer);
     };
-  }, [query]);
-  return { data, error };
+  }, [query, refreshSeconds]);
+  return { data, error, nextRefreshAt, receivedAt };
 }
 
 function Stat({
@@ -172,7 +180,11 @@ export function Dashboard() {
     setRange(zoomHistory.find((value) => typeof value === "string") ?? "1h");
     setZoomHistory([]);
   }
-  const { data, error } = useMetrics(range);
+  const { refreshSeconds, changeRefresh, refreshSaveError } = useRefreshInterval();
+  const { data, error, nextRefreshAt, receivedAt } = useMetrics(
+    range,
+    refreshSeconds,
+  );
   const [now, setNow] = useState(0);
   useEffect(() => {
     setNow(Date.now());
@@ -184,10 +196,12 @@ export function Dashboard() {
   const age = sample
     ? Math.max(0, Math.floor((now - sample.timestamp) / 1000))
     : null;
+  const staleAfter = Math.max((data?.collector.intervalMs ?? 5000) * 3, 15_000);
+  // A slow refresh preference is expected; an already-old server sample is not.
   const stale =
     !!sample &&
-    now - sample.timestamp >
-      Math.max((data?.collector.intervalMs ?? 5000) * 3, 15_000);
+    (receivedAt - sample.timestamp > staleAfter ||
+      now - sample.timestamp > staleAfter + (refreshSeconds ?? 5) * 1000);
   const live =
     !!sample &&
     data?.collector.running &&
@@ -208,6 +222,9 @@ export function Dashboard() {
     sample?.disks.find((d) => d.mount === "/") ??
     sample?.disks[0];
   const warnings = [
+    refreshSaveError
+      ? "Refresh preference could not be saved in this browser."
+      : null,
     logoutError,
     error,
     data?.collector.error,
@@ -698,14 +715,21 @@ export function Dashboard() {
               />
               {liveStatus}
             </span>
-            <TimeRangePicker
-              range={range}
-              window={data?.window}
-              onChange={changeRange}
-              onBack={undoZoom}
-              onReset={resetZoom}
-              canGoBack={zoomHistory.length > 0}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <TimeRangePicker
+                range={range}
+                window={data?.window}
+                onChange={changeRange}
+                onBack={undoZoom}
+                onReset={resetZoom}
+                canGoBack={zoomHistory.length > 0}
+              />
+              <RefreshPicker
+                seconds={refreshSeconds ?? 5}
+                nextRefreshAt={nextRefreshAt}
+                onChange={changeRefresh}
+              />
+            </div>
           </div>
         </div>
 
