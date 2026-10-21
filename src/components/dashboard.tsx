@@ -709,27 +709,27 @@ export function Dashboard() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span
-                className={`size-1.5 rounded-full ${live ? "bg-success" : "bg-muted-foreground"}`}
-              />
-              {liveStatus}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              <TimeRangePicker
-                range={range}
-                window={data?.window}
-                onChange={changeRange}
-                onBack={undoZoom}
-                onReset={resetZoom}
-                canGoBack={zoomHistory.length > 0}
-              />
+            <div className="flex items-center gap-2">
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <span
+                  className={`size-1.5 rounded-full ${live ? "bg-success" : "bg-muted-foreground"}`}
+                />
+                {liveStatus}
+              </span>
               <RefreshPicker
                 seconds={refreshSeconds ?? 5}
                 nextRefreshAt={nextRefreshAt}
                 onChange={changeRefresh}
               />
             </div>
+            <TimeRangePicker
+              range={range}
+              window={data?.window}
+              onChange={changeRange}
+              onBack={undoZoom}
+              onReset={resetZoom}
+              canGoBack={zoomHistory.length > 0}
+            />
           </div>
         </div>
 
