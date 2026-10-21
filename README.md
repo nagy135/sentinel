@@ -12,14 +12,14 @@ Sentinel is a self-hosted system monitoring dashboard for Linux and macOS. It co
 
 Built with Bun, TanStack Start, React, TypeScript, and `systeminformation`. Run it directly on the machine you want to monitor, or add it to a Linux project's Docker Compose deployment.
 
-## Build and run from source
+## Build and run with the Dockerfile
 
-Requires Bun **1.4.2**.
+Clone the project on your Linux server and build the included Dockerfile. Docker installs Bun and the application dependencies inside the image; the server needs Git and Docker Engine.
 
 ```sh
 git clone https://github.com/nagy135/sentinel.git
 cd sentinel
-bun install --frozen-lockfile
+docker build -t sentinel:local .
 ```
 
 Create `.env` in the checkout with your own credentials:
@@ -29,21 +29,43 @@ SENTINEL_USERNAME=admin
 SENTINEL_PASSWORD=replace-with-a-long-unique-password
 ```
 
-Replace the example password, keep `.env` out of Git, and restrict its permissions:
+Replace the example password, keep `.env` out of Git, and run:
 
 ```sh
 chmod 600 .env
-bun run build
-bun start
+docker volume create sentinel_data
+docker run -d \
+  --name sentinel \
+  --restart unless-stopped \
+  --init \
+  --network host \
+  --pid host \
+  --uts host \
+  --env-file .env \
+  --env PORT=3100 \
+  --env SENTINEL_HOST=127.0.0.1 \
+  --env SENTINEL_HOST_ROOT=/host \
+  --env SENTINEL_DB_PATH=/data/sentinel.sqlite \
+  --mount type=volume,source=sentinel_data,target=/data \
+  --mount type=bind,source=/,target=/host,readonly,bind-propagation=rslave \
+  --mount type=bind,source=/sys,target=/sys,readonly \
+  sentinel:local
+docker logs --tail=100 sentinel
 ```
 
-Open **http://127.0.0.1:3000** and log in. The server and collector start together. For development, use `bun run dev` instead of building and starting production.
+This monitors the Linux host using shared network, PID, and hostname namespaces and read-only host mounts. It runs as non-root, without privileged mode or a Docker socket. The named volume stores metrics and login sessions across container replacements; `--restart unless-stopped` starts the container again after a server reboot when Docker starts.
 
-By default, native runs listen on localhost and store history in `./data/sentinel.sqlite`. For a production installation, set `SENTINEL_DB_PATH` in `.env` to a persistent location outside the checkout.
+Open **http://127.0.0.1:3100** on the server and log in. The dashboard listens only on localhost. For a remote server, run this on your computer and then open that same local URL:
+
+```sh
+ssh -L 3100:127.0.0.1:3100 user@your-server
+```
+
+To deploy a rebuilt image, run `docker build -t sentinel:local .` again, remove the old container with `docker stop sentinel` and `docker rm sentinel`, then repeat the `docker run` command. Keep `sentinel_data` to preserve history.
 
 ## Add Sentinel to Docker Compose
 
-This setup monitors the **Linux host running your project**, including host processes and filesystems. It does not provide per-container resource accounting or application-specific metrics. Docker on macOS exposes its Linux VM; use the native setup above to monitor the Mac itself.
+This setup monitors the **Linux host running your project**, including host processes and filesystems. It does not provide per-container resource accounting or application-specific metrics. Docker on macOS exposes its Linux VM; use the source setup below to monitor the Mac itself.
 
 ### 1. Add the service
 
@@ -121,15 +143,9 @@ ssh -L 3100:127.0.0.1:3100 user@your-server
 
 For an HTTPS reverse proxy, set `SENTINEL_PUBLIC_URL=https://status.example.com` in `.env` and rerun `docker compose up -d sentinel`. A proxy on the host can forward to `http://127.0.0.1:3100`. A proxy in a bridge-network container needs access to the host; its own `127.0.0.1` points to that proxy container.
 
-### Build your own Docker image
+### Use the image you built
 
-From a Sentinel source checkout, build the included Dockerfile:
-
-```sh
-docker build -t sentinel:local .
-```
-
-On the same Docker Engine, set `SENTINEL_IMAGE=sentinel:local` in your deployment project's `.env`, then run from that project's directory:
+To use the local image from the Dockerfile setup above, set `SENTINEL_IMAGE=sentinel:local` in your deployment project's `.env` on the same Docker Engine. Then run from that project's directory:
 
 ```sh
 docker compose up -d --pull never sentinel
@@ -146,9 +162,29 @@ docker compose up -d sentinel
 
 The named volume keeps metrics and login sessions through container restarts and replacements. Keep the Compose project name stable to reuse it. Stop monitoring with `docker compose stop sentinel`. **`docker compose down --volumes` deletes the combined project's named volumes, including Sentinel history and application data.**
 
+## Run from source
+
+Requires Bun **1.4.2** on Linux or macOS. Clone the repository if you have not already, then work from its directory:
+
+```sh
+git clone https://github.com/nagy135/sentinel.git
+cd sentinel
+bun install --frozen-lockfile
+```
+
+Create a private `.env` with `SENTINEL_USERNAME` and `SENTINEL_PASSWORD`, as shown in the Dockerfile setup, then build and start:
+
+```sh
+chmod 600 .env
+bun run build
+bun start
+```
+
+Open **http://127.0.0.1:3000** and log in. For development, use `bun run dev` instead of the production build and start commands. The server and collector run together. History defaults to `./data/sentinel.sqlite`; for production, set `SENTINEL_DB_PATH` to a persistent location outside the checkout.
+
 ## Configuration and login
 
-Bun reads `.env` automatically; Compose passes the variables listed in the service definition. Restart or recreate Sentinel after changing settings.
+Docker loads credentials through `--env-file .env`; Compose passes the variables listed in the service definition. Bun reads `.env` automatically for native runs. Restart or recreate Sentinel after changing settings.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
