@@ -198,10 +198,13 @@ Docker loads credentials through `--env-file .env`; Compose passes the variables
 | `SENTINEL_HOST` | `127.0.0.1` | Native bind address; accepts `127.0.0.1` or `0.0.0.0`. The Compose example also binds to localhost. |
 | `SENTINEL_PUBLIC_URL` | Request origin | External HTTP(S) origin, such as `https://status.example.com`, for reverse proxies. |
 | `SENTINEL_HOST_ROOT` | Unset | Linux host filesystem mount; the Compose service sets `/host`. |
+| `SENTINEL_DEBUG_PERF` | Unset | Set to `1` temporarily to log request, SQLite query, collection, and browser timings. |
 
 Login sessions persist in `<SENTINEL_DB_PATH>.auth.sqlite`; back it up with the metrics database. Changing either credential revokes existing sessions on restart. HTTPS enables Secure cookies. `/healthz` exposes service health without login.
 
 History has no automatic retention limit, so allow disk space for continued collection. Hiding dashboard blocks or changing the displayed time range does not delete data. Sensor availability depends on the host; missing readings remain unavailable.
+
+With `SENTINEL_DEBUG_PERF=1`, structured `[sentinel:perf]` logs include the selected range, stored sample count, database and response size, CPU time, memory usage, and timings for each dashboard query and collection sensor. Visible dashboard tabs automatically report loading, JSON parsing, DOM commit, and a two-frame paint-wait estimate to the same authenticated API. Match `metrics` and `browser` entries by `requestId`. Query timings are nested within the request total; sensor timings overlap because collection runs concurrently. Browser frame timing is an estimate, and browser reports may be absent if a tab is hidden or closed before reporting. Disable the flag and restart after collecting a reproduction. Compose deployments must also pass this variable through the service's `environment` section.
 
 ## Development checks
 

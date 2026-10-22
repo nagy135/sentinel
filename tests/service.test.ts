@@ -54,6 +54,7 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     SENTINEL_PASSWORD: password,
     SENTINEL_PUBLIC_URL: "",
     SENTINEL_INTERVAL_MS: "1000",
+    SENTINEL_DEBUG_PERF: "1",
     SENTINEL_DB_PATH: join(directory, "history.sqlite"),
   };
   const start = () =>
@@ -187,6 +188,55 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       `http://127.0.0.1:${port}/api/metrics?range=custom&from=${from}&to=${to}`,
     );
     expect(selected.status).toBe(200);
+    const requestId = selected.headers.get("x-sentinel-perf");
+    expect(requestId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(selected.headers.get("server-timing")).toContain(
+      "processRanking;dur=",
+    );
+    const report = {
+      requestId,
+      headersMs: 20,
+      bodyMs: 2,
+      parseMs: 1,
+      commitMs: 30,
+      twoFramesMs: 32,
+      totalMs: 85,
+    };
+    const reportUrl = `http://127.0.0.1:${port}/api/metrics`;
+    const reportInit = {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: `http://127.0.0.1:${port}`,
+      },
+      body: JSON.stringify(report),
+    };
+    expect((await authenticatedFetch(reportUrl, reportInit)).status).toBe(204);
+    expect((await fetch(reportUrl, reportInit)).status).toBe(401);
+    expect(
+      (
+        await authenticatedFetch(reportUrl, {
+          ...reportInit,
+          headers: { ...reportInit.headers, Origin: "https://other.example" },
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await authenticatedFetch(reportUrl, {
+          ...reportInit,
+          body: JSON.stringify({ ...report, totalMs: -1 }),
+        })
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await authenticatedFetch(reportUrl, {
+          ...reportInit,
+          body: "x".repeat(2049),
+        })
+      ).status,
+    ).toBe(413);
     const fixed: DashboardData = await selected.json();
     expect(fixed.range).toEqual({ from, to });
     expect(fixed.window).toEqual({ from, to });
@@ -235,6 +285,7 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       expect(privateFile.status).toBe(404);
     }
     await stop();
+    env.SENTINEL_DEBUG_PERF = "0";
     service = start();
     const restarted = await waitFor(
       (data) => data.storage.count > firstRun.storage.count,
@@ -251,6 +302,8 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       `http://127.0.0.1:${port}/api/metrics`,
     );
     expect(remembered.status).toBe(200);
+    expect(remembered.headers.get("x-sentinel-perf")).toBeNull();
+    expect((await authenticatedFetch(reportUrl, reportInit)).status).toBe(404);
     const renewed = remembered.headers.get("set-cookie");
     expect(renewed).toContain("HttpOnly");
     expect(renewed).toContain("SameSite=Lax");

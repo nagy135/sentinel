@@ -4,6 +4,11 @@ import { readConfig } from "./config.server";
 import { MetricsStore } from "./store.server";
 import { hostDisks, readHostIdentity } from "./host.server";
 import { ProcessCollector } from "./processes.server";
+import {
+  logPerformance,
+  performanceEnabled,
+  type PerformanceTrace,
+} from "./performance.server";
 import type {
   DashboardData,
   HostInfo,
@@ -74,16 +79,23 @@ export class Collector {
 
   private async capture(): Promise<Sample> {
     const warnings: string[] = [];
+    const sensorTimings: Record<string, number> | null = performanceEnabled()
+      ? {}
+      : null;
     async function read<T>(
       label: string,
       fn: () => Promise<T>,
     ): Promise<T | null> {
+      const started = performance.now();
       try {
         return await fn();
       } catch (error) {
         console.error(`[sentinel] ${label} collection failed`, error);
         warnings.push(`${label} unavailable`);
         return null;
+      } finally {
+        if (sensorTimings)
+          sensorTimings[label] = Math.round(performance.now() - started);
       }
     }
     const [cpu, mem, filesystems, interfaces, traffic, temperature, processes] =
@@ -119,6 +131,7 @@ export class Collector {
           hostDisks(disks, this.config.hostRoot!),
         )) ?? [];
     }
+    if (sensorTimings) logPerformance("sensors", { timingsMs: sensorTimings });
     // APFS System and Data volumes share a container; never sum their capacities.
     const mainDisk =
       disks.find((d) => d.mount === "/System/Volumes/Data") ??
@@ -192,10 +205,16 @@ export class Collector {
   private async tick() {
     if (this.stopped) return;
     const started = Date.now();
+    const expected = this.nextTickAt;
+    let captureMs = 0;
+    let insertMs = 0;
     this.pending = (async () => {
       try {
         const sample = await this.capture();
+        captureMs = Date.now() - started;
+        const insertStarted = performance.now();
         this.store.insert(sample);
+        insertMs = Math.round(performance.now() - insertStarted);
         this.error = null;
       } catch (error) {
         this.error =
@@ -205,16 +224,29 @@ export class Collector {
     })();
     await this.pending;
     this.pending = null;
-    if (!this.stopped)
+    logPerformance("collection", {
+      durationMs: Date.now() - started,
+      captureMs,
+      insertMs,
+      lateMs: expected === null ? 0 : Math.max(0, started - expected),
+      failed: this.error !== null,
+    });
+    if (!this.stopped) {
+      this.nextTickAt = Math.max(Date.now(), started + this.config.intervalMs);
       this.timer = setTimeout(
         () => void this.tick(),
         Math.max(0, this.config.intervalMs - (Date.now() - started)),
       );
+    }
   }
 
-  dashboard(range: TimeRange): DashboardData {
+  private nextTickAt: number | null = null;
+
+  dashboard(range: TimeRange, trace?: PerformanceTrace): DashboardData {
     const now = Date.now();
-    const storage = this.store.summary();
+    const measure = <T>(name: string, action: () => T): T =>
+      trace ? trace.measure(name, action) : action();
+    const storage = measure("summary", () => this.store.summary());
     const window =
       typeof range === "string"
         ? {
@@ -225,9 +257,11 @@ export class Collector {
         : range;
     return {
       host: this.host,
-      latest: this.store.latest(),
-      history: this.store.history(window, now),
-      processes: this.store.processHistories(window, this.config.intervalMs),
+      latest: measure("latest", () => this.store.latest()),
+      history: measure("history", () => this.store.history(window, now)),
+      processes: measure("processHistories", () =>
+        this.store.processHistories(window, this.config.intervalMs, trace),
+      ),
       storage,
       collector: {
         running: this.running && !this.stopped,

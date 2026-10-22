@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
+import type { PerformanceTrace } from "./performance.server";
 import {
   ranges,
   type HistoryPoint,
@@ -121,7 +122,17 @@ export class MetricsStore {
   processHistories(
     window: AbsoluteRange,
     intervalMs: number,
+    trace?: PerformanceTrace,
   ): { cpu: ProcessHistory; memory: ProcessHistory } {
+    let started = performance.now();
+    const mark = (name: string, count?: number) => {
+      if (trace) {
+        trace.timings[name] =
+          Math.round((performance.now() - started) * 100) / 100;
+        if (count !== undefined) trace.counts[name] = count;
+      }
+      started = performance.now();
+    };
     const bucketMs = Math.max(
       1,
       Math.ceil((window.to - window.from + 1) / 360),
@@ -153,6 +164,7 @@ export class MetricsStore {
     `,
       )
       .all(window.from, window.to);
+    mark("processRanking", ranked.length);
     const series: Record<"cpu" | "memory", ProcessHistory["series"]> = {
       cpu: [],
       memory: [],
@@ -184,6 +196,7 @@ export class MetricsStore {
     `,
       )
       .all(bucketMs, window.from, window.to);
+    mark("processBuckets", buckets.length);
     const ids = [...new Set(ranked.map((process) => process.id))];
     const rows = this.db
       .query<
@@ -208,6 +221,7 @@ export class MetricsStore {
     `,
       )
       .all(bucketMs, window.from, window.to, ...ids);
+    mark("processReadings", rows.length);
     const values = new Map(rows.map((r) => [`${r.bucket}:${r.id}`, r]));
     const build = (metric: "cpu" | "memory"): ProcessHistory => {
       const lines = series[metric];
@@ -230,7 +244,8 @@ export class MetricsStore {
           ),
           coverage: lines.map(
             (p) =>
-              values.get(`${bucket.bucket}:${p.id}`)?.[`${metric}Coverage`] ?? 0,
+              values.get(`${bucket.bucket}:${p.id}`)?.[`${metric}Coverage`] ??
+              0,
           ),
           samples: bucket.samples,
         });
@@ -238,7 +253,12 @@ export class MetricsStore {
       }
       return { series: lines, points };
     };
-    return { cpu: build("cpu"), memory: build("memory") };
+    const result = { cpu: build("cpu"), memory: build("memory") };
+    mark(
+      "processAssembly",
+      result.cpu.points.length + result.memory.points.length,
+    );
+    return result;
   }
 
   summary() {

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
   ArrowDown,
@@ -41,6 +41,50 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
   const [error, setError] = useState<string | null>(null);
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
   const [receivedAt, setReceivedAt] = useState(0);
+  const pendingTiming = useRef<{
+    data: DashboardData;
+    started: number;
+    parsedAt: number;
+    fields: {
+      requestId: string;
+      headersMs: number;
+      bodyMs: number;
+      parseMs: number;
+    };
+  } | null>(null);
+  useEffect(() => {
+    const timing = pendingTiming.current;
+    if (!timing || timing.data !== data) return;
+    pendingTiming.current = null;
+    if (document.hidden) return;
+    // Effects run after the DOM commit. Two frames approximate the wait until
+    // the updated charts can be painted; this isn't an exact paint timestamp.
+    const committedAt = performance.now();
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => {
+        if (document.hidden) return;
+        const finished = performance.now();
+        void fetch("/api/metrics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...timing.fields,
+            commitMs: committedAt - timing.parsedAt,
+            twoFramesMs: finished - committedAt,
+            totalMs: finished - timing.started,
+          }),
+          keepalive: true,
+        }).catch(() => {
+          /* Diagnostics must not affect dashboard polling. */
+        });
+      });
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      cancelAnimationFrame(secondFrame);
+    };
+  }, [data]);
   useEffect(() => {
     if (refreshSeconds === null) return;
     const abort = new AbortController();
@@ -48,6 +92,7 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
     const poll = async () => {
       setNextRefreshAt(null);
       try {
+        const started = performance.now();
         const response = await fetch(`/api/metrics?${query}`, {
           signal: abort.signal,
           cache: "no-store",
@@ -58,7 +103,28 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
         }
         if (!response.ok)
           throw new Error("Could not reach the metrics service.");
-        const next: DashboardData = await response.json();
+        const headersAt = performance.now();
+        const requestId = response.headers.get("X-Sentinel-Perf");
+        let next: DashboardData;
+        if (requestId) {
+          const body = await response.text();
+          const bodyAt = performance.now();
+          next = JSON.parse(body);
+          const parsedAt = performance.now();
+          pendingTiming.current = {
+            data: next,
+            started,
+            parsedAt,
+            fields: {
+              requestId,
+              headersMs: headersAt - started,
+              bodyMs: bodyAt - headersAt,
+              parseMs: parsedAt - bodyAt,
+            },
+          };
+        } else {
+          next = await response.json();
+        }
         if (abort.signal.aborted) return;
         setData(next);
         setReceivedAt(Date.now());
@@ -180,7 +246,8 @@ export function Dashboard() {
     setRange(zoomHistory.find((value) => typeof value === "string") ?? "1h");
     setZoomHistory([]);
   }
-  const { refreshSeconds, changeRefresh, refreshSaveError } = useRefreshInterval();
+  const { refreshSeconds, changeRefresh, refreshSaveError } =
+    useRefreshInterval();
   const { data, error, nextRefreshAt, receivedAt } = useMetrics(
     range,
     refreshSeconds,
