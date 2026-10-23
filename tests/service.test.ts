@@ -122,6 +122,20 @@ test(`${production ? "production" : "dev"} command collects without a browser an
   try {
     const firstRun = await waitFor((data) => data.storage.count >= 3);
     expect(firstRun.diagnostics.supported).toBe(process.platform === "linux");
+    expect(
+      (await fetch(`http://127.0.0.1:${port}/api/load-evidence?at=1`)).status,
+    ).toBe(401);
+    expect(
+      (await authenticatedFetch(`http://127.0.0.1:${port}/api/load-evidence?at=bad`)).status,
+    ).toBe(400);
+    const explained = await authenticatedFetch(
+      `http://127.0.0.1:${port}/api/load-evidence?at=${firstRun.latest!.timestamp}`,
+    );
+    expect(explained.status).toBe(200);
+    expect(await explained.json()).toMatchObject({
+      at: firstRun.latest!.timestamp,
+      from: firstRun.latest!.timestamp - 60_000,
+    });
     const privateIncident = await fetch(
       `http://127.0.0.1:${port}/api/incidents?id=1`,
     );

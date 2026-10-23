@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, type ReactNode } from "react";
 import {
   Area,
   AreaChart,
@@ -7,6 +7,9 @@ import {
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
+  DefaultTooltipContent,
+  ReferenceArea,
+  type TooltipContentProps,
   XAxis,
   YAxis,
 } from "recharts";
@@ -30,6 +33,9 @@ export function MetricChart<T extends { timestamp: number }>({
   window,
   onZoom,
   onInspect,
+  onHover,
+  tooltipExtra,
+  evidenceWindows = [],
   emptyMessage,
   emptyHint,
   variant = "area",
@@ -46,6 +52,9 @@ export function MetricChart<T extends { timestamp: number }>({
   window?: AbsoluteRange;
   onZoom: (range: AbsoluteRange) => void;
   onInspect?: (timestamp: number) => void;
+  onHover?: (timestamp: number | null) => void;
+  tooltipExtra?: ReactNode;
+  evidenceWindows?: AbsoluteRange[];
   emptyMessage?: string;
   emptyHint?: string;
   variant?: "area" | "line";
@@ -134,6 +143,17 @@ export function MetricChart<T extends { timestamp: number }>({
                   ))}
                 </defs>
                 <CartesianGrid vertical={false} strokeDasharray="3 4" />
+                {evidenceWindows.map((range) => (
+                  <ReferenceArea
+                    key={`${range.from}:${range.to}`}
+                    x1={range.from}
+                    x2={range.to}
+                    fill="var(--chart-3)"
+                    fillOpacity={0.1}
+                    strokeOpacity={0}
+                    ifOverflow="hidden"
+                  />
+                ))}
                 <XAxis
                   dataKey="timestamp"
                   type="number"
@@ -184,6 +204,15 @@ export function MetricChart<T extends { timestamp: number }>({
                   }
                 />
                 <Tooltip
+                  content={
+                    onHover
+                      ? (props) => (
+                          <EvidenceTooltip props={props} onHover={onHover}>
+                            {tooltipExtra}
+                          </EvidenceTooltip>
+                        )
+                      : undefined
+                  }
                   contentStyle={{
                     borderRadius: 10,
                     background: "var(--popover)",
@@ -267,5 +296,39 @@ export function MetricChart<T extends { timestamp: number }>({
         {children}
       </CardContent>
     </Card>
+  );
+}
+
+function EvidenceTooltip({
+  props,
+  onHover,
+  children,
+}: {
+  props: TooltipContentProps;
+  onHover: (timestamp: number | null) => void;
+  children: ReactNode;
+}) {
+  const timestamp =
+    props.active && Number.isFinite(Number(props.label))
+      ? Number(props.label)
+      : null;
+  useEffect(() => {
+    onHover(timestamp);
+  }, [timestamp, onHover]);
+  useEffect(() => () => onHover(null), [onHover]);
+  if (!props.active) return null;
+  return (
+    <div className="max-w-72 rounded-lg border bg-popover p-3 text-xs text-popover-foreground shadow-md">
+      <DefaultTooltipContent
+        {...props}
+        contentStyle={{
+          border: 0,
+          background: "transparent",
+          padding: 0,
+          whiteSpace: "normal",
+        }}
+      />
+      {children}
+    </div>
   );
 }

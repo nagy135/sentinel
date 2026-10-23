@@ -1,3 +1,4 @@
+import { summarizeLoadEvidence, type BusyProcess } from "../lib/load-evidence";
 import type {
   DiagnosticSample,
   IncidentSummary,
@@ -53,6 +54,9 @@ export class MetricsStore {
         PRIMARY KEY (incident_id, timestamp)
       ) WITHOUT ROWID;
     `);
+    this.db.exec(
+      "CREATE INDEX IF NOT EXISTS incident_readings_timestamp ON incident_readings(timestamp)",
+    );
     // A restart cannot silently leave a historical incident marked as recording.
     this.db.exec(
       "UPDATE incidents SET status = 'interrupted' WHERE status = 'recording'",
@@ -460,6 +464,34 @@ export class MetricsStore {
       .all(id)
       .map((row) => JSON.parse(row.payload) as DiagnosticSample);
     return { ...summary, readings };
+  }
+
+  loadEvidence(at: number) {
+    const from = Math.max(0, at - 60_000);
+    const readings = this.db
+      .query<{ payload: string }, [number, number]>(
+        `
+      SELECT payload FROM (
+        SELECT payload, timestamp,
+          ROW_NUMBER() OVER (PARTITION BY timestamp ORDER BY incident_id DESC) AS rank
+        FROM incident_readings WHERE timestamp >= ? AND timestamp <= ?
+      ) WHERE rank = 1 ORDER BY timestamp
+    `,
+      )
+      .all(from, at)
+      .map((r) => JSON.parse(r.payload) as DiagnosticSample);
+    const busyProcesses = this.db
+      .query<BusyProcess, [number, number]>(
+        `
+      SELECT p.id, p.pid, p.name, MAX(r.cpu) AS peakCpu, COUNT(r.cpu) AS observations
+      FROM samples s JOIN process_samples r ON r.sample_id = s.id
+      JOIN processes p ON p.id = r.process_id
+      WHERE s.timestamp >= ? AND s.timestamp <= ? AND r.cpu > 0
+      GROUP BY p.id ORDER BY peakCpu DESC, p.pid, p.id LIMIT 5
+    `,
+      )
+      .all(from, at);
+    return summarizeLoadEvidence(at, readings, busyProcesses);
   }
 
   close() {

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as HealthzRouteImport } from './routes/healthz'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as ApiIncidentsRouteImport } from './routes/api.incidents'
+import { Route as ApiLoadEvidenceRouteImport } from './routes/api.load-evidence'
 import { Route as ApiMetricsRouteImport } from './routes/api.metrics'
 import { Route as ApiAuthLoginRouteImport } from './routes/api.auth.login'
 import { Route as ApiAuthLogoutRouteImport } from './routes/api.auth.logout'
@@ -37,6 +38,11 @@ const ApiIncidentsRoute = ApiIncidentsRouteImport.update({
   path: '/api/incidents',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiLoadEvidenceRoute = ApiLoadEvidenceRouteImport.update({
+  id: '/api/load-evidence',
+  path: '/api/load-evidence',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiMetricsRoute = ApiMetricsRouteImport.update({
   id: '/api/metrics',
   path: '/api/metrics',
@@ -58,6 +64,7 @@ export interface FileRoutesByFullPath {
   '/healthz': typeof HealthzRoute
   '/login': typeof LoginRoute
   '/api/incidents': typeof ApiIncidentsRoute
+  '/api/load-evidence': typeof ApiLoadEvidenceRoute
   '/api/metrics': typeof ApiMetricsRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByTo {
   '/healthz': typeof HealthzRoute
   '/login': typeof LoginRoute
   '/api/incidents': typeof ApiIncidentsRoute
+  '/api/load-evidence': typeof ApiLoadEvidenceRoute
   '/api/metrics': typeof ApiMetricsRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
@@ -77,6 +85,7 @@ export interface FileRoutesById {
   '/healthz': typeof HealthzRoute
   '/login': typeof LoginRoute
   '/api/incidents': typeof ApiIncidentsRoute
+  '/api/load-evidence': typeof ApiLoadEvidenceRoute
   '/api/metrics': typeof ApiMetricsRoute
   '/api/auth/login': typeof ApiAuthLoginRoute
   '/api/auth/logout': typeof ApiAuthLogoutRoute
@@ -88,6 +97,7 @@ export interface FileRouteTypes {
     | '/healthz'
     | '/login'
     | '/api/incidents'
+    | '/api/load-evidence'
     | '/api/metrics'
     | '/api/auth/login'
     | '/api/auth/logout'
@@ -97,6 +107,7 @@ export interface FileRouteTypes {
     | '/healthz'
     | '/login'
     | '/api/incidents'
+    | '/api/load-evidence'
     | '/api/metrics'
     | '/api/auth/login'
     | '/api/auth/logout'
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/healthz'
     | '/login'
     | '/api/incidents'
+    | '/api/load-evidence'
     | '/api/metrics'
     | '/api/auth/login'
     | '/api/auth/logout'
@@ -116,6 +128,7 @@ export interface RootRouteChildren {
   HealthzRoute: typeof HealthzRoute
   LoginRoute: typeof LoginRoute
   ApiIncidentsRoute: typeof ApiIncidentsRoute
+  ApiLoadEvidenceRoute: typeof ApiLoadEvidenceRoute
   ApiMetricsRoute: typeof ApiMetricsRoute
   ApiAuthLoginRoute: typeof ApiAuthLoginRoute
   ApiAuthLogoutRoute: typeof ApiAuthLogoutRoute
@@ -151,6 +164,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiIncidentsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/load-evidence': {
+      id: '/api/load-evidence'
+      path: '/api/load-evidence'
+      fullPath: '/api/load-evidence'
+      preLoaderRoute: typeof ApiLoadEvidenceRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/metrics': {
       id: '/api/metrics'
       path: '/api/metrics'
@@ -180,6 +200,7 @@ const rootRouteChildren: RootRouteChildren = {
   HealthzRoute: HealthzRoute,
   LoginRoute: LoginRoute,
   ApiIncidentsRoute: ApiIncidentsRoute,
+  ApiLoadEvidenceRoute: ApiLoadEvidenceRoute,
   ApiMetricsRoute: ApiMetricsRoute,
   ApiAuthLoginRoute: ApiAuthLoginRoute,
   ApiAuthLogoutRoute: ApiAuthLogoutRoute,

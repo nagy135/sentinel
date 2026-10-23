@@ -85,6 +85,19 @@ export function IncidentPanel({
     })();
     return () => abort.abort();
   }, [selected, summary?.endedAt, summary?.status]);
+  useEffect(() => {
+    if (!focusAt || !detail || detail.id !== selected) return;
+    const closest = detail.readings.reduce<DiagnosticSample | null>(
+      (best, r) =>
+        !best ||
+        Math.abs(r.timestamp - focusAt.timestamp) <
+          Math.abs(best.timestamp - focusAt.timestamp)
+          ? r
+          : best,
+      null,
+    );
+    if (closest) setPoint(closest.timestamp);
+  }, [detail?.id, focusAt, selected]);
   const latest = status?.latest;
   const stale = latest && Date.now() - latest.timestamp > 15_000;
   const readings = detail?.id === selected ? detail.readings : [];

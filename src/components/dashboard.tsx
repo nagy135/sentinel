@@ -1,3 +1,4 @@
+import { LoadChart } from "@/components/load-chart";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Activity,
@@ -694,44 +695,16 @@ export function Dashboard() {
       </Card>
     ),
     "load-history": (
-      <MetricChart
-        title="System load"
-        onInspect={
-          data?.diagnostics?.supported
-            ? (timestamp) => setInspectAt({ timestamp })
-            : undefined
-        }
-        description="Runnable and waiting tasks · 1, 5, and 15 minute averages"
-        data={history}
-        unit="load"
-        series={[
-          { key: "load1", label: "1m", color: primaryChart },
-          { key: "load5", label: "5m", color: secondaryChart },
-          { key: "load15", label: "15m", color: "var(--chart-3)" },
-        ]}
+      <LoadChart
+        history={history}
         loading={loading}
         window={data?.window}
         onZoom={changeRange}
-      >
-        <div className="mt-4 flex flex-wrap justify-between gap-2 border-t px-2 pt-4 text-[10px] text-muted-foreground">
-          <span>
-            Now{" "}
-            <span className="ml-1 font-mono text-foreground">
-              {sample?.load
-                ? `${sample.load.one.toFixed(2)} / ${sample.load.five.toFixed(2)} / ${sample.load.fifteen.toFixed(2)}`
-                : "—"}
-            </span>
-          </span>
-          <span>
-            {host?.cores ?? "—"} logical cores · load is not a percentage
-            {data?.diagnostics?.supported && (
-              <a href="#load-incidents" className="ml-2 text-primary underline">
-                Inspect incidents
-              </a>
-            )}
-          </span>
-        </div>
-      </MetricChart>
+        onDetails={(timestamp) => setInspectAt({ timestamp })}
+        incidents={data?.diagnostics?.incidents ?? []}
+        cores={host?.cores}
+        now={data?.now ?? 0}
+      />
     ),
     "temperature-history": (
       <MetricChart
