@@ -99,13 +99,38 @@ try {
     "Dashboard must be published only on localhost",
   );
   const url = `http://${address}`;
-  const first = await waitFor(url, (data) => data.storage.count >= 3);
+  const first = await waitFor(
+    url,
+    (data) =>
+      data.storage.count >= 3 && data.diagnostics?.latest?.cpu.busy != null,
+  );
   assert(
     first.host?.platform === "linux",
     "Docker metrics must describe Linux",
   );
   assert(first.latest?.load?.one != null, "Load averages were not collected");
   assert(!first.collector.error, "Collector reported an error");
+  assert(
+    first.diagnostics.supported && !first.diagnostics.error,
+    "Linux diagnostics failed",
+  );
+  assert(
+    first.diagnostics.latest?.runnable != null &&
+      first.diagnostics.latest.blocked != null,
+    "Task queues unavailable",
+  );
+  assert(
+    first.diagnostics.latest.swapIn != null,
+    "Swap counter deltas unavailable",
+  );
+  assert(
+    first.diagnostics.latest.threads.length <= 200,
+    "Blocked thread capture exceeded its bound",
+  );
+  assert(
+    (await fetch(`${url}/api/incidents?id=1`)).status === 401,
+    "Anonymous incident access must be denied",
+  );
   assert(
     first.latest?.processes?.length && first.latest.processes.length <= 40,
     "Bounded process samples were not collected",

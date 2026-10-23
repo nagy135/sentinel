@@ -14,10 +14,12 @@ interface Drag {
 
 export function ChartZoom({
   onZoom,
+  onInspect,
   enabled,
   title,
 }: {
   onZoom: (range: AbsoluteRange) => void;
+  onInspect?: (timestamp: number) => void;
   enabled: boolean;
   title: string;
 }) {
@@ -89,13 +91,17 @@ export function ChartZoom({
     cancel();
     if (event.currentTarget.hasPointerCapture(event.pointerId))
       event.currentTarget.releasePointerCapture(event.pointerId);
-    // Ignore clicks and tiny accidental movements, including reversed drags.
-    if (!current || Math.abs(current.end - current.start) < 6) return;
+    // A click inspects a sample; a drag selects a time range in either direction.
+    if (!current) return;
     const at = (x: number) =>
       Math.round(
         current.from +
           ((x - current.left) / current.width) * (current.to - current.from),
       );
+    if (Math.abs(current.end - current.start) < 6) {
+      onInspect?.(Math.max(0, at(current.start)));
+      return;
+    }
     const from = Math.max(0, at(Math.min(current.start, current.end)));
     const to = at(Math.max(current.start, current.end));
     if (from < to) onZoom({ from, to });

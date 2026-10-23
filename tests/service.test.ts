@@ -112,6 +112,25 @@ test(`${production ? "production" : "dev"} command collects without a browser an
   }
   try {
     const firstRun = await waitFor((data) => data.storage.count >= 3);
+    expect(firstRun.diagnostics.supported).toBe(process.platform === "linux");
+    const privateIncident = await fetch(
+      `http://127.0.0.1:${port}/api/incidents?id=1`,
+    );
+    expect(privateIncident.status).toBe(401);
+    expect(
+      (
+        await authenticatedFetch(
+          `http://127.0.0.1:${port}/api/incidents?id=bad`,
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await authenticatedFetch(
+          `http://127.0.0.1:${port}/api/incidents?id=9007199254740991`,
+        )
+      ).status,
+    ).toBe(404);
     const anonymous = await fetch(`http://127.0.0.1:${port}/api/metrics`);
     expect(anonymous.status).toBe(401);
     expect(await anonymous.text()).not.toContain(firstRun.host!.hostname);

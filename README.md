@@ -214,3 +214,23 @@ bun run test:production   # build and test the production server
 bun run test:docker       # requires Docker Engine
 bun run test:docker:host  # requires Docker Engine on Linux
 ```
+
+## Investigate load spikes (Linux)
+
+The **Load incident recorder** runs automatically on Linux, independently of the browser and the regular `SENTINEL_INTERVAL_MS` setting. It samples `/proc` about once a second, without running commands or recording process arguments or environment variables. On macOS, regular monitoring continues and the recorder reports that Linux diagnostics are unavailable.
+
+The recorder collects:
+
+- Instantaneous runnable/blocked task counts and the one-minute load average.
+- CPU, memory, and I/O pressure (PSI), calculated from cumulative stall-time deltas; CPU busy, I/O wait, and steal time.
+- Swap-in/out rates in pages per second and major page faults per second.
+- Per-device read/write throughput, average completed-I/O latency, average queue depth, and in-flight requests. Devices and partitions can overlap and are never added together.
+- Threads observed in uninterruptible sleep (D state), including threads whose process leader is sleeping and workloads outside the top CPU/memory lists. Readable kernel wait locations and raw cgroup membership help identify the affected service or container. Thread identities include boot ID and start time to distinguish reused IDs.
+
+A recording starts when at least two tasks are blocked, the run queue or one-minute load exceeds twice the logical core count, or interval PSI `some` reaches 25% for CPU or 10% for memory/I/O. Further triggers extend the same recording until two minutes after the last trigger. Continuous incidents are capped at ten minutes, followed by a one-minute cooldown before another recording can start.
+
+Click a point in **System load**, or follow **Inspect incidents**, to inspect a saved recording. The incident charts zoom together; clicking a point or choosing a sample shows that moment's disk activity and blocked threads. The thread table ranks repeated observations, not exact blocked durations. **Show window in dashboard** aligns the ordinary charts with the recording. A blocked workload is not necessarily the cause of contention, and sampling cannot capture every short-lived task or establish every root cause.
+
+The pre-trigger buffer holds up to five minutes / 300 readings / 4 MiB in memory. Saved diagnostics are retained in the existing SQLite database, with limits of seven days, 50 incidents, 4 MiB of reading JSON per incident, and 32 MiB overall. Oldest readings are trimmed first when byte limits are reached, so the displayed retained window can be shorter than requested. These are payload limits; SQLite pages and WAL files add overhead. Ordinary metric history is unaffected. Recordings survive restarts; unfinished recordings are marked **interrupted**.
+
+Collection is best effort with the existing non-root Docker setup. Missing PSI support, restricted task access, hidden wait symbols, and truncated details are reported in **Collection limits**; unavailable values remain unknown. Task details are capped at 200 blocked threads and disk details at 128 devices per reading. All threads are scanned, so large hosts can take longer than a second; collection duration and timeline gaps remain visible. The recorder does not require privileged mode or a Docker socket. Raw cgroup paths are shown as observed and may be limited by the host's cgroup namespace configuration.

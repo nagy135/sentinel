@@ -1,3 +1,8 @@
+import type {
+  DiagnosticSample,
+  IncidentSummary,
+  IncidentDetail,
+} from "../lib/diagnostics";
 import { Database } from "bun:sqlite";
 import { mkdirSync, statSync } from "node:fs";
 import { dirname } from "node:path";
@@ -37,6 +42,21 @@ export class MetricsStore {
         PRIMARY KEY (sample_id, process_id)
       ) WITHOUT ROWID;
     `);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS incidents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, triggered_at INTEGER NOT NULL,
+        status TEXT NOT NULL, reasons TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS incident_readings (
+        incident_id INTEGER NOT NULL, timestamp INTEGER NOT NULL,
+        payload TEXT NOT NULL, bytes INTEGER NOT NULL,
+        PRIMARY KEY (incident_id, timestamp)
+      ) WITHOUT ROWID;
+    `);
+    // A restart cannot silently leave a historical incident marked as recording.
+    this.db.exec(
+      "UPDATE incidents SET status = 'interrupted' WHERE status = 'recording'",
+    );
     // Upgrade existing databases in place; old readings remain unknown, never zero.
     const columns = new Set(
       this.db
@@ -48,7 +68,7 @@ export class MetricsStore {
       for (const name of ["load1", "load5", "load15", "temperature"])
         if (!columns.has(name))
           this.db.exec(`ALTER TABLE samples ADD COLUMN ${name} REAL`);
-      this.db.exec("PRAGMA user_version = 3");
+      this.db.exec("PRAGMA user_version = 4");
     })();
   }
 
@@ -96,9 +116,10 @@ export class MetricsStore {
 
   latest(): Sample | null {
     const row = this.db
-      .query<{ id: number; snapshot: string }, []>(
-        "SELECT id, snapshot FROM samples ORDER BY timestamp DESC, id DESC LIMIT 1",
-      )
+      .query<
+        { id: number; snapshot: string },
+        []
+      >("SELECT id, snapshot FROM samples ORDER BY timestamp DESC, id DESC LIMIT 1")
       .get();
     if (!row) return null;
     const sample = {
@@ -263,9 +284,10 @@ export class MetricsStore {
 
   summary() {
     const row = this.db
-      .query<{ count: number; first: number | null; last: number | null }, []>(
-        "SELECT COUNT(*) AS count, MIN(timestamp) AS first, MAX(timestamp) AS last FROM samples",
-      )
+      .query<
+        { count: number; first: number | null; last: number | null },
+        []
+      >("SELECT COUNT(*) AS count, MIN(timestamp) AS first, MAX(timestamp) AS last FROM samples")
       .get()!;
     const bytes =
       this.path === ":memory:"
@@ -289,9 +311,10 @@ export class MetricsStore {
         ? range.from
         : range === "all"
           ? (this.db
-              .query<{ first: number | null }, []>(
-                "SELECT MIN(timestamp) AS first FROM samples",
-              )
+              .query<
+                { first: number | null },
+                []
+              >("SELECT MIN(timestamp) AS first FROM samples")
               .get()?.first ?? now)
           : now - ranges[range].ms;
     const end = typeof range === "string" ? now : range.to;
@@ -310,6 +333,133 @@ export class MetricsStore {
     `,
       )
       .all(first, end, bucketMs);
+  }
+
+  startIncident(triggeredAt: number, reasons: string[]): number {
+    return Number(
+      this.db
+        .query(
+          "INSERT INTO incidents (triggered_at, status, reasons) VALUES (?, 'recording', ?)",
+        )
+        .run(triggeredAt, JSON.stringify(reasons)).lastInsertRowid,
+    );
+  }
+
+  saveIncident(
+    id: number,
+    readings: DiagnosticSample[],
+    reasons: string[],
+    status: IncidentSummary["status"],
+  ) {
+    this.db.transaction(() => {
+      const insert = this.db.query(
+        "INSERT OR IGNORE INTO incident_readings (incident_id, timestamp, payload, bytes) VALUES (?, ?, ?, ?)",
+      );
+      for (const reading of readings) {
+        const payload = JSON.stringify(reading);
+        insert.run(id, reading.timestamp, payload, Buffer.byteLength(payload));
+      }
+      this.db
+        .query("UPDATE incidents SET status = ?, reasons = ? WHERE id = ?")
+        .run(status, JSON.stringify(reasons), id);
+      const now = readings.at(-1)?.timestamp ?? Date.now();
+      this.pruneIncidents(now);
+      let incidentBytes = this.db
+        .query<
+          { bytes: number },
+          [number]
+        >("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM incident_readings WHERE incident_id = ?")
+        .get(id)!.bytes;
+      while (incidentBytes > 4 * 1024 * 1024) {
+        const oldest = this.db
+          .query<
+            { timestamp: number; bytes: number },
+            [number]
+          >("SELECT timestamp, bytes FROM incident_readings WHERE incident_id = ? ORDER BY timestamp LIMIT 1")
+          .get(id)!;
+        this.db
+          .query(
+            "DELETE FROM incident_readings WHERE incident_id = ? AND timestamp = ?",
+          )
+          .run(id, oldest.timestamp);
+        incidentBytes -= oldest.bytes;
+      }
+      // Bound retained JSON to 32 MiB, even during a long incident on a busy host.
+      let size = this.db
+        .query<
+          { bytes: number },
+          []
+        >("SELECT COALESCE(SUM(bytes), 0) AS bytes FROM incident_readings")
+        .get()!.bytes;
+      while (size > 32 * 1024 * 1024) {
+        const oldest = this.db
+          .query<
+            { incident_id: number; timestamp: number; bytes: number },
+            []
+          >("SELECT incident_id, timestamp, bytes FROM incident_readings ORDER BY incident_id, timestamp LIMIT 1")
+          .get()!;
+        this.db
+          .query(
+            "DELETE FROM incident_readings WHERE incident_id = ? AND timestamp = ?",
+          )
+          .run(oldest.incident_id, oldest.timestamp);
+        size -= oldest.bytes;
+      }
+      this.db.exec(
+        "DELETE FROM incidents WHERE status != 'recording' AND id NOT IN (SELECT incident_id FROM incident_readings)",
+      );
+    })();
+  }
+
+  pruneIncidents(now: number) {
+    this.db.transaction(() => {
+      this.db
+        .query(
+          `DELETE FROM incidents WHERE status != 'recording' AND (
+        triggered_at < ? OR id NOT IN (SELECT id FROM incidents ORDER BY id DESC LIMIT 50))`,
+        )
+        .run(now - 7 * 86400_000);
+      this.db.exec(
+        "DELETE FROM incident_readings WHERE incident_id NOT IN (SELECT id FROM incidents)",
+      );
+    })();
+  }
+
+  incidents(): IncidentSummary[] {
+    return this.db
+      .query<
+        {
+          id: number;
+          triggeredAt: number;
+          status: IncidentSummary["status"];
+          reasons: string;
+          startedAt: number;
+          endedAt: number;
+          samples: number;
+        },
+        []
+      >(
+        `
+      SELECT i.id, i.triggered_at AS triggeredAt, i.status, i.reasons,
+        MIN(r.timestamp) AS startedAt, MAX(r.timestamp) AS endedAt, COUNT(*) AS samples
+      FROM incidents i JOIN incident_readings r ON r.incident_id = i.id
+      GROUP BY i.id ORDER BY i.id DESC LIMIT 50
+    `,
+      )
+      .all()
+      .map((row) => ({ ...row, reasons: JSON.parse(row.reasons) }));
+  }
+
+  incident(id: number): IncidentDetail | null {
+    const summary = this.incidents().find((item) => item.id === id);
+    if (!summary) return null;
+    const readings = this.db
+      .query<{ payload: string }, [number]>(
+        "SELECT payload FROM incident_readings WHERE incident_id = ? ORDER BY timestamp",
+      )
+      .all(id)
+      .map((row) => JSON.parse(row.payload) as DiagnosticSample);
+    return { ...summary, readings };
   }
 
   close() {

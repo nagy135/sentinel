@@ -3,6 +3,7 @@ import { loadavg, platform, uptime } from "node:os";
 import { readConfig } from "./config.server";
 import { MetricsStore } from "./store.server";
 import { hostDisks, readHostIdentity } from "./host.server";
+import { IncidentRecorder } from "./incidents.server";
 import { ProcessCollector } from "./processes.server";
 import {
   logPerformance,
@@ -30,6 +31,7 @@ const sum = (values: (number | null)[]) =>
 export class Collector {
   readonly config = readConfig();
   readonly store = new MetricsStore(this.config.dbPath);
+  readonly diagnostics = new IncidentRecorder(this.store);
   host: HostInfo | null = null;
   running = false;
   error: string | null = null;
@@ -75,6 +77,7 @@ export class Collector {
     // Prime CPU deltas. The first network sample deliberately reports no rate.
     await si.currentLoad();
     await this.tick();
+    this.diagnostics.start();
   }
 
   private async capture(): Promise<Sample> {
@@ -256,6 +259,7 @@ export class Collector {
           }
         : range;
     return {
+      diagnostics: this.diagnostics.status(),
       host: this.host,
       latest: measure("latest", () => this.store.latest()),
       history: measure("history", () => this.store.history(window, now)),
@@ -279,6 +283,7 @@ export class Collector {
     this.running = false;
     clearTimeout(this.timer);
     await this.pending;
+    await this.diagnostics.stop();
     this.store.close();
   }
 }

@@ -1,3 +1,4 @@
+import type { DiagnosticStatus } from "./diagnostics";
 export const ranges = {
   "15m": { label: "Last 15 minutes", ms: 15 * 60_000 },
   "1h": { label: "Last hour", ms: 60 * 60_000 },
@@ -103,6 +104,7 @@ export interface HistoryPoint {
 }
 
 export interface DashboardData {
+  diagnostics: DiagnosticStatus;
   host: HostInfo | null;
   latest: Sample | null;
   history: HistoryPoint[];

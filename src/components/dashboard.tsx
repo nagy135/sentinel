@@ -27,6 +27,7 @@ import { ThemeSwitcher } from "@/components/theme-switcher";
 import { DashboardGrid } from "@/components/dashboard-grid";
 import type { BlockId } from "@/lib/dashboard-layout";
 import { MetricChart } from "@/components/metric-chart";
+import { IncidentPanel } from "@/components/incident-panel";
 import { ProcessChart } from "@/components/process-chart";
 import { bytes, duration, pct, rate } from "@/lib/format";
 import { type DashboardData, type TimeRange } from "@/lib/metrics";
@@ -337,6 +338,9 @@ export function Dashboard() {
       ? "Metrics are delayed. The last saved values are shown."
       : null,
   ].filter(Boolean);
+  const [inspectAt, setInspectAt] = useState<{ timestamp: number } | null>(
+    null,
+  );
   const blocks: Record<BlockId, ReactNode> = {
     system: (
       <section
@@ -692,6 +696,11 @@ export function Dashboard() {
     "load-history": (
       <MetricChart
         title="System load"
+        onInspect={
+          data?.diagnostics?.supported
+            ? (timestamp) => setInspectAt({ timestamp })
+            : undefined
+        }
         description="Runnable and waiting tasks · 1, 5, and 15 minute averages"
         data={history}
         unit="load"
@@ -715,6 +724,11 @@ export function Dashboard() {
           </span>
           <span>
             {host?.cores ?? "—"} logical cores · load is not a percentage
+            {data?.diagnostics?.supported && (
+              <a href="#load-incidents" className="ml-2 text-primary underline">
+                Inspect incidents
+              </a>
+            )}
           </span>
         </div>
       </MetricChart>
@@ -865,11 +879,16 @@ export function Dashboard() {
         )}
 
         <DashboardGrid blocks={blocks} />
+        <IncidentPanel
+          status={data?.diagnostics}
+          focusAt={inspectAt}
+          onShowRange={changeRange}
+        />
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t pb-2 pt-5 text-[11px] text-muted-foreground">
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">
               <Database className="size-3" />
-              All history saved locally
+              Metric history saved locally
             </span>
             <span className="text-border">/</span>
             <span>{data?.storage.count.toLocaleString() ?? "0"} samples</span>

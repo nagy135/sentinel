@@ -29,6 +29,7 @@ export function MetricChart<T extends { timestamp: number }>({
   loading = false,
   window,
   onZoom,
+  onInspect,
   emptyMessage,
   emptyHint,
   variant = "area",
@@ -44,6 +45,7 @@ export function MetricChart<T extends { timestamp: number }>({
   loading?: boolean;
   window?: AbsoluteRange;
   onZoom: (range: AbsoluteRange) => void;
+  onInspect?: (timestamp: number) => void;
   emptyMessage?: string;
   emptyHint?: string;
   variant?: "area" | "line";
@@ -240,6 +242,7 @@ export function MetricChart<T extends { timestamp: number }>({
                 <ChartZoom
                   title={title}
                   onZoom={onZoom}
+                  onInspect={onInspect}
                   enabled={!loading && data.length > 1}
                 />
               </Chart>
