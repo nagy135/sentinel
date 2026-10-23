@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronDown } from "lucide-react";
 import { MetricChart } from "@/components/metric-chart";
-import { Button } from "@/components/ui/button";
 import type { AbsoluteRange, HistoryPoint } from "@/lib/metrics";
 import type { IncidentSummary } from "@/lib/diagnostics";
 import { type LoadEvidence, workloadName } from "@/lib/load-evidence";
@@ -209,29 +208,15 @@ export function LoadChart({
         </summary>
         {expanded && (
           <div className="mt-4 space-y-3" aria-label="Load process evidence">
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <div>
-                <h3 className="text-xs font-semibold">
-                  What was happening here?
-                </h3>
-                <p className="mt-1 text-[11px] text-muted-foreground">
-                  {selectedAt === null
-                    ? "Select a recorded point."
-                    : `${pinned ? "Selected point" : "Highest plotted load"} · ${new Date(selectedAt).toLocaleString()}`}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="text-xs"
-                disabled={!peak}
-                onClick={() => {
-                  setPinnedAt(null);
-                  setRetry((n) => n + 1);
-                }}
-              >
-                Explain highest load
-              </Button>
+            <div>
+              <h3 className="text-xs font-semibold">
+                What was happening here?
+              </h3>
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                {selectedAt === null
+                  ? "Select a recorded point."
+                  : `${pinned ? "Selected point" : "Highest plotted load"} · ${new Date(selectedAt).toLocaleString()}`}
+              </p>
             </div>
             {selectedAt !== null && !selected && (
               <p role="status" className="text-xs text-muted-foreground">
