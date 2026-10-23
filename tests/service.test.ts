@@ -5,6 +5,15 @@ import { join } from "node:path";
 import type { DashboardData } from "../src/lib/metrics";
 
 const production = process.env.SENTINEL_TEST_PRODUCTION === "1";
+// Allow deployment checks on slow hosts without relaxing any behavior assertions.
+const startupTimeoutMs = Number(
+  process.env.SENTINEL_TEST_STARTUP_TIMEOUT_MS ?? 20_000,
+);
+if (!Number.isSafeInteger(startupTimeoutMs) || startupTimeoutMs < 20_000)
+  throw new Error(
+    "SENTINEL_TEST_STARTUP_TIMEOUT_MS must be an integer of at least 20000",
+  );
+const serviceTimeoutMs = Math.max(45_000, startupTimeoutMs * 3);
 test("refuses to start without private credentials", async () => {
   const directory = mkdtempSync(join(tmpdir(), "sentinel-unconfigured-"));
   try {
@@ -74,7 +83,7 @@ test(`${production ? "production" : "dev"} command collects without a browser an
   async function waitFor(
     predicate: (data: DashboardData) => boolean,
   ): Promise<DashboardData> {
-    const deadline = Date.now() + 20_000;
+    const deadline = Date.now() + startupTimeoutMs;
     while (Date.now() < deadline) {
       if (service.exitCode !== null)
         throw new Error(await new Response(service.stderr).text());
@@ -107,7 +116,7 @@ test(`${production ? "production" : "dev"} command collects without a browser an
       await Bun.sleep(100);
     }
     throw new Error(
-      "Dev service did not produce the expected metrics within 20 seconds.",
+      `Service did not produce the expected metrics within ${startupTimeoutMs / 1000} seconds.`,
     );
   }
   try {
@@ -343,4 +352,4 @@ test(`${production ? "production" : "dev"} command collects without a browser an
     await stop();
     rmSync(directory, { recursive: true, force: true });
   }
-}, 45_000);
+}, serviceTimeoutMs);

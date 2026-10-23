@@ -215,6 +215,8 @@ bun run test:docker       # requires Docker Engine
 bun run test:docker:host  # requires Docker Engine on Linux
 ```
 
+For slower hosts, use `SENTINEL_TEST_STARTUP_TIMEOUT_MS=60000 bun run test:production` to allow more time for service startup and the restart smoke test. The behavior assertions remain the same.
+
 ## Investigate load spikes (Linux)
 
 The **Load incident recorder** runs automatically on Linux, independently of the browser and the regular `SENTINEL_INTERVAL_MS` setting. It samples `/proc` about once a second, without running commands or recording process arguments or environment variables. On macOS, regular monitoring continues and the recorder reports that Linux diagnostics are unavailable.
