@@ -3,8 +3,21 @@ import { ChevronDown } from "lucide-react";
 import { MetricChart } from "@/components/metric-chart";
 import type { AbsoluteRange, HistoryPoint } from "@/lib/metrics";
 import type { IncidentSummary } from "@/lib/diagnostics";
-import { type LoadEvidence, workloadName } from "@/lib/load-evidence";
+import {
+  type LoadEvidence,
+  type LoadContributor,
+  loadContributors,
+} from "@/lib/load-evidence";
 import { pct } from "@/lib/format";
+
+function contributorActivity(process: LoadContributor) {
+  return [
+    process.blocked ? "Waiting in kernel" : null,
+    process.peakCpu !== null ? `CPU peak ${pct(process.peakCpu)}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
 
 const cache = new Map<number, { savedAt: number; evidence: LoadEvidence }>();
 function useLoadEvidence(at: number | null, refreshKey: number, delay = 0) {
@@ -117,6 +130,10 @@ export function LoadChart({
   const selected = useLoadEvidence(expanded ? selectedAt : null, refreshKey);
   const hovered = useLoadEvidence(loading ? null : hoverAt, refreshKey, 200);
   const evidence = selected?.evidence;
+  const contributors = evidence ? loadContributors(evidence) : [];
+  const hoverContributors = hovered?.evidence
+    ? loadContributors(hovered.evidence).slice(0, 3)
+    : [];
   function inspect(timestamp: number) {
     const closest = history.reduce<HistoryPoint | null>(
       (best, p) =>
@@ -151,35 +168,18 @@ export function LoadChart({
           ) : hovered.error ? (
             <p>{hovered.error}</p>
           ) : hovered.evidence ? (
-            <>
-              {hovered.evidence.blockedTasks.slice(0, 2).map((task) => (
-                <p key={task.id} className="break-words">
-                  {task.name} · PID {task.pid} · blocked {task.observations}/
-                  {hovered.evidence!.readings} readings
-                  {workloadName(task.cgroup) && (
-                    <span className="block text-muted-foreground">
-                      {workloadName(task.cgroup)}
-                    </span>
-                  )}
-                </p>
+            <ul className="space-y-1">
+              {hoverContributors.map((process) => (
+                <li key={process.pid}>
+                  {process.name} · {contributorActivity(process)}
+                </li>
               ))}
-              {!hovered.evidence.blockedTasks.length && (
-                <p className="text-muted-foreground">
-                  {hovered.evidence.readings
-                    ? "No blocked threads captured."
-                    : "No saved task recording for this minute."}
-                </p>
+              {!hoverContributors.length && (
+                <li className="text-muted-foreground">
+                  No contributing processes captured.
+                </li>
               )}
-              {!!hovered.evidence.busyProcesses.length && (
-                <p>
-                  Top CPU: {hovered.evidence.busyProcesses[0].name} ·{" "}
-                  {pct(hovered.evidence.busyProcesses[0].peakCpu)}
-                </p>
-              )}
-              {hovered.evidence.peakIoWait !== null && (
-                <p>I/O wait peak: {pct(hovered.evidence.peakIoWait)}</p>
-              )}
-            </>
+            </ul>
           ) : null}
           <p className="pt-1 text-muted-foreground">
             Click to select this point, then expand Process details.
@@ -208,16 +208,11 @@ export function LoadChart({
         </summary>
         {expanded && (
           <div className="mt-4 space-y-3" aria-label="Load process evidence">
-            <div>
-              <h3 className="text-xs font-semibold">
-                What was happening here?
-              </h3>
-              <p className="mt-1 text-[11px] text-muted-foreground">
-                {selectedAt === null
-                  ? "Select a recorded point."
-                  : `${pinned ? "Selected point" : "Highest plotted load"} · ${new Date(selectedAt).toLocaleString()}`}
-              </p>
-            </div>
+            <p className="text-[11px] text-muted-foreground">
+              {selectedAt === null
+                ? "Select a point on the graph."
+                : `${pinned ? "Selected point" : "Highest load"} · ${new Date(selectedAt).toLocaleString()} · preceding minute`}
+            </p>
             {selectedAt !== null && !selected && (
               <p role="status" className="text-xs text-muted-foreground">
                 Loading processes around this spike…
@@ -229,126 +224,46 @@ export function LoadChart({
               </p>
             )}
             {evidence && (
-              <>
-                <p className="text-[11px] text-muted-foreground">
-                  Evidence from the 60 seconds leading up to this point. Load is
-                  averaged, so the work can precede its peak.
-                </p>
-                <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
-                  <span>
-                    I/O wait peak{" "}
-                    <strong className="font-mono">
-                      {pct(evidence.peakIoWait)}
-                    </strong>
-                  </span>
-                  <span>
-                    Blocked tasks peak{" "}
-                    <strong className="font-mono">
-                      {evidence.peakBlocked ?? "Unknown"}
-                    </strong>
-                  </span>
-                  <span className="text-muted-foreground">
-                    {evidence.readings} diagnostic readings
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  <h4 className="text-xs font-medium">
-                    Processes waiting in the kernel
-                  </h4>
-                  {evidence.blockedTasks.length ? (
-                    <ul className="space-y-2 text-xs">
-                      {evidence.blockedTasks.map((task) => (
-                        <li
-                          key={task.id}
-                          className="flex flex-wrap justify-between gap-x-3 gap-y-1 rounded-md bg-muted/40 p-2.5"
-                        >
-                          <div className="min-w-0">
-                            <p className="break-words">
-                              <strong>{task.name}</strong>{" "}
-                              <span className="font-mono text-muted-foreground">
-                                PID {task.pid} / TID {task.tid}
-                              </span>
-                            </p>
-                            <p className="mt-1 break-all text-[11px] text-muted-foreground">
-                              {workloadName(task.cgroup) ??
-                                "Service unavailable"}
-                              {task.waits.length
-                                ? ` · ${task.waits.join(", ")}`
-                                : " · Wait location unavailable"}
-                            </p>
-                          </div>
-                          <span className="shrink-0 text-[11px] text-muted-foreground">
-                            Blocked in {task.observations}/{evidence.readings}{" "}
-                            readings
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      {evidence.readings
-                        ? "No blocked threads were captured in this minute."
-                        : "No saved diagnostic readings cover this minute. Older spikes may have CPU history only."}
-                    </p>
-                  )}
-                </div>
-                {!!evidence.busyProcesses.length && (
-                  <div className="space-y-1.5 border-t pt-3">
-                    <h4 className="text-xs font-medium">
-                      Busiest CPU processes
-                    </h4>
-                    <p className="text-[10px] text-muted-foreground">
-                      Peak percentage of total CPU capacity in this minute.
-                    </p>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-                      {evidence.busyProcesses.map((p) => (
-                        <span key={p.id}>
-                          {p.name}{" "}
-                          <span className="font-mono text-muted-foreground">
-                            {p.pid} · {pct(p.peakCpu)}
-                          </span>
+              <ul className="divide-y" aria-label="Likely load contributors">
+                {contributors.map((process) => (
+                  <li
+                    key={process.pid}
+                    className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2 text-xs first:pt-0 last:pb-0"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="break-words">
+                        <strong className="font-medium">{process.name}</strong>
+                        <span className="ml-2 text-[10px] text-muted-foreground">
+                          PID {process.pid}
                         </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {!!evidence.disks.length && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-muted-foreground">
-                      Disk evidence
-                    </summary>
-                    <div className="mt-2 space-y-1">
-                      {evidence.disks.map((d) => (
-                        <p key={d.device}>
-                          {d.device} · peak latency{" "}
-                          {d.peakLatencyMs === null
-                            ? "unknown"
-                            : `${d.peakLatencyMs.toFixed(1)} ms`}{" "}
-                          · peak queue {d.peakQueue?.toFixed(1) ?? "unknown"}
+                      </p>
+                      {process.service && (
+                        <p
+                          className="mt-0.5 truncate text-[10px] text-muted-foreground"
+                          title={process.service}
+                        >
+                          {process.service}
                         </p>
-                      ))}
+                      )}
                     </div>
-                    <p className="mt-2 text-[10px] text-muted-foreground">
-                      Peaks may occur in different samples. Devices and
-                      partitions can overlap.
-                    </p>
-                  </details>
+                    <span
+                      className="text-[11px] text-muted-foreground"
+                      title={
+                        process.blocked
+                          ? "Observed waiting in the kernel; may be causing contention or waiting behind another program."
+                          : "Peak share of total CPU capacity in the preceding minute."
+                      }
+                    >
+                      {contributorActivity(process)}
+                    </span>
+                  </li>
+                ))}
+                {!contributors.length && (
+                  <li className="text-xs text-muted-foreground">
+                    No contributing processes captured for this minute.
+                  </li>
                 )}
-                {!!evidence.warnings.length && (
-                  <details className="text-[11px] text-muted-foreground">
-                    <summary className="cursor-pointer">
-                      Missing or limited evidence ({evidence.warnings.length})
-                    </summary>
-                    <p className="mt-1 break-words">
-                      {evidence.warnings.join(" · ")}
-                    </p>
-                  </details>
-                )}
-                <p className="border-t pt-3 text-[10px] text-muted-foreground">
-                  These are observed workloads. A blocked process may be causing
-                  I/O or waiting behind another workload.
-                </p>
-              </>
+              </ul>
             )}
           </div>
         )}

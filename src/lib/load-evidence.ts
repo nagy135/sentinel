@@ -33,6 +33,58 @@ export function workloadName(cgroup: string | null): string | null {
     null
   );
 }
+
+export interface LoadContributor {
+  pid: number;
+  name: string;
+  service: string | null;
+  blocked: boolean;
+  peakCpu: number | null;
+}
+
+// A process can have several blocked threads and also appear in CPU history.
+// Show it once, with both observations, rather than as separate suspects.
+export function loadContributors(evidence: LoadEvidence): LoadContributor[] {
+  const processes = new Map<
+    number,
+    LoadContributor & { blockedObservations: number }
+  >();
+  for (const task of evidence.blockedTasks) {
+    const entry = processes.get(task.pid) ?? {
+      pid: task.pid,
+      name: task.name,
+      service: workloadName(task.cgroup),
+      blocked: true,
+      peakCpu: null,
+      blockedObservations: 0,
+    };
+    entry.blockedObservations += task.observations;
+    entry.service ??= workloadName(task.cgroup);
+    processes.set(task.pid, entry);
+  }
+  for (const process of evidence.busyProcesses) {
+    const entry = processes.get(process.pid) ?? {
+      pid: process.pid,
+      name: process.name,
+      service: null,
+      blocked: false,
+      peakCpu: null,
+      blockedObservations: 0,
+    };
+    entry.name = process.name;
+    entry.peakCpu = Math.max(entry.peakCpu ?? 0, process.peakCpu);
+    processes.set(process.pid, entry);
+  }
+  return [...processes.values()]
+    .sort(
+      (a, b) =>
+        b.blockedObservations - a.blockedObservations ||
+        (b.peakCpu ?? 0) - (a.peakCpu ?? 0) ||
+        a.pid - b.pid,
+    )
+    .slice(0, 5)
+    .map(({ blockedObservations: _, ...process }) => process);
+}
 const peak = (values: (number | null)[]) => {
   const known = values.filter((v): v is number => v !== null);
   return known.length ? Math.max(...known) : null;

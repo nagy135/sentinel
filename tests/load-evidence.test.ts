@@ -1,6 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
 import { MetricsStore } from "../src/server/store.server";
-import { summarizeLoadEvidence, workloadName } from "../src/lib/load-evidence";
+import {
+  loadContributors,
+  summarizeLoadEvidence,
+  workloadName,
+} from "../src/lib/load-evidence";
 import type { DiagnosticSample } from "../src/lib/diagnostics";
 import type { Sample } from "../src/lib/metrics";
 const stores: MetricsStore[] = [];
@@ -183,4 +187,38 @@ test("extracts service and container names without requiring a Docker socket", (
   ).toBe("container abcdef123456");
   expect(workloadName("0::/")).toBeNull();
   expect(workloadName(null)).toBeNull();
+});
+
+test("shows one contributor per process with both waiting and CPU evidence", () => {
+  const a = reading(at);
+  a.threads.push({ ...task("boot:10:12:101"), tid: 12, name: "worker-thread" });
+  const evidence = summarizeLoadEvidence(at, [a], [
+    { id: "cpu:10", pid: 10, name: "sqlite3", peakCpu: 7, observations: 2 },
+    { id: "cpu:20", pid: 20, name: "node", peakCpu: 60, observations: 2 },
+  ]);
+  expect(loadContributors(evidence)).toEqual([
+    {
+      pid: 10,
+      name: "sqlite3",
+      service: "uptime-dashboard-backup.service",
+      blocked: true,
+      peakCpu: 7,
+    },
+    { pid: 20, name: "node", service: null, blocked: false, peakCpu: 60 },
+  ]);
+});
+
+test("bounds the contributor list and keeps missing process data empty", () => {
+  const evidence = summarizeLoadEvidence(at, [], []);
+  expect(loadContributors(evidence)).toEqual([]);
+  evidence.busyProcesses = Array.from({ length: 8 }, (_, i) => ({
+    id: `cpu:${i}`,
+    pid: i,
+    name: "worker",
+    peakCpu: i + 1,
+    observations: 1,
+  }));
+  expect(loadContributors(evidence).map((process) => process.pid)).toEqual([
+    7, 6, 5, 4, 3,
+  ]);
 });
