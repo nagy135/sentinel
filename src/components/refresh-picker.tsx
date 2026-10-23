@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Dialog } from "radix-ui";
-import { RefreshCw, X } from "lucide-react";
+import { LoaderCircle, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -85,10 +85,14 @@ function RefreshCountdown({
 export function RefreshPicker({
   seconds,
   nextRefreshAt,
+  isRefreshing,
+  pollSeconds,
   onChange,
 }: {
   seconds: number;
   nextRefreshAt: number | null;
+  isRefreshing: boolean;
+  pollSeconds: number;
   onChange: (seconds: number) => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -103,7 +107,22 @@ export function RefreshPicker({
   }
   return (
     <div className="flex shrink-0 items-center gap-2">
-      <RefreshCountdown seconds={seconds} nextRefreshAt={nextRefreshAt} />
+      <RefreshCountdown seconds={pollSeconds} nextRefreshAt={nextRefreshAt} />
+      <span
+        role="status"
+        className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground"
+        title={isRefreshing ? "Refreshing data" : "Waiting for next refresh"}
+      >
+        {isRefreshing && (
+          <>
+            <LoaderCircle
+              aria-hidden="true"
+              className="size-3.5 animate-spin motion-reduce:animate-none"
+            />
+            <span className="sr-only">Refreshing data</span>
+          </>
+        )}
+      </span>
       <Select
         value={String(seconds)}
         onValueChange={(value) => {

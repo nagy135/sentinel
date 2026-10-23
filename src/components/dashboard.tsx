@@ -40,6 +40,8 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
   const [data, setData] = useState<DashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pollSeconds, setPollSeconds] = useState(refreshSeconds ?? 5);
   const [receivedAt, setReceivedAt] = useState(0);
   const pendingTiming = useRef<{
     data: DashboardData;
@@ -87,17 +89,40 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
   }, [data]);
   useEffect(() => {
     if (refreshSeconds === null) return;
-    const abort = new AbortController();
-    let timer: ReturnType<typeof setTimeout>;
+    let stopped = false;
+    let inFlight = false;
+    let abort: AbortController | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const schedule = () => {
+      clearTimeout(timer);
+      const seconds = document.hidden
+        ? Math.max(refreshSeconds, 60)
+        : refreshSeconds;
+      setPollSeconds(seconds);
+      setNextRefreshAt(Date.now() + seconds * 1000);
+      timer = setTimeout(() => void poll(), seconds * 1000);
+    };
     const poll = async () => {
+      clearTimeout(timer);
+      abort?.abort();
+      const request = new AbortController();
+      abort = request;
+      inFlight = true;
+      setPollSeconds(
+        document.hidden ? Math.max(refreshSeconds, 60) : refreshSeconds,
+      );
       setNextRefreshAt(null);
+      setIsRefreshing(true);
       try {
         const started = performance.now();
         const response = await fetch(`/api/metrics?${query}`, {
-          signal: abort.signal,
+          signal: request.signal,
           cache: "no-store",
         });
         if (response.status === 401) {
+          if (request.signal.aborted) return;
+          inFlight = false;
+          setIsRefreshing(false);
           window.location.replace("/login");
           return;
         }
@@ -111,6 +136,7 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
           const bodyAt = performance.now();
           next = JSON.parse(body);
           const parsedAt = performance.now();
+          if (request.signal.aborted) return;
           pendingTiming.current = {
             data: next,
             started,
@@ -125,27 +151,40 @@ function useMetrics(range: TimeRange, refreshSeconds: number | null) {
         } else {
           next = await response.json();
         }
-        if (abort.signal.aborted) return;
+        if (request.signal.aborted) return;
         setData(next);
         setReceivedAt(Date.now());
         setError(null);
       } catch (error) {
-        if (!abort.signal.aborted)
+        if (!request.signal.aborted)
           setError(error instanceof Error ? error.message : "Connection lost.");
       }
-      if (!abort.signal.aborted) {
-        const delay = refreshSeconds * 1000;
-        setNextRefreshAt(Date.now() + delay);
-        timer = setTimeout(() => void poll(), delay);
+      if (!stopped && !request.signal.aborted) {
+        inFlight = false;
+        setIsRefreshing(false);
+        schedule();
       }
     };
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        // Let an active request finish, then use the background interval.
+        setPollSeconds(Math.max(refreshSeconds, 60));
+        if (!inFlight) schedule();
+      } else {
+        // Replace any background request so returning always fetches fresh data.
+        void poll();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
     void poll();
     return () => {
-      abort.abort();
+      stopped = true;
+      abort?.abort();
       clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
   }, [query, refreshSeconds]);
-  return { data, error, nextRefreshAt, receivedAt };
+  return { data, error, nextRefreshAt, receivedAt, isRefreshing, pollSeconds };
 }
 
 function Stat({
@@ -248,10 +287,8 @@ export function Dashboard() {
   }
   const { refreshSeconds, changeRefresh, refreshSaveError } =
     useRefreshInterval();
-  const { data, error, nextRefreshAt, receivedAt } = useMetrics(
-    range,
-    refreshSeconds,
-  );
+  const { data, error, nextRefreshAt, receivedAt, isRefreshing, pollSeconds } =
+    useMetrics(range, refreshSeconds);
   const [now, setNow] = useState(0);
   useEffect(() => {
     setNow(Date.now());
@@ -268,7 +305,7 @@ export function Dashboard() {
   const stale =
     !!sample &&
     (receivedAt - sample.timestamp > staleAfter ||
-      now - sample.timestamp > staleAfter + (refreshSeconds ?? 5) * 1000);
+      now - sample.timestamp > staleAfter + pollSeconds * 1000);
   const live =
     !!sample &&
     data?.collector.running &&
@@ -786,6 +823,8 @@ export function Dashboard() {
               <RefreshPicker
                 seconds={refreshSeconds ?? 5}
                 nextRefreshAt={nextRefreshAt}
+                isRefreshing={isRefreshing}
+                pollSeconds={pollSeconds}
                 onChange={changeRefresh}
               />
             </div>
