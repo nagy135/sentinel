@@ -4,7 +4,28 @@ import {
   timeRangeQuery,
   validateAbsoluteRange,
   toLocalDateTime,
+  formatRangeDuration,
 } from "../src/lib/time-range";
+
+test("formats custom range durations with readable units and second precision", () => {
+  expect(formatRangeDuration({ from: 0, to: 40_116_000 })).toBe(
+    "11 hours, 8 minutes, 36 seconds",
+  );
+  expect(formatRangeDuration({ from: 0, to: 90_061_000 })).toBe(
+    "1 day, 1 hour, 1 minute, 1 second",
+  );
+  expect(formatRangeDuration({ from: 0, to: 3600_000 })).toBe("1 hour");
+  expect(formatRangeDuration({ from: 0, to: 999 })).toBe("less than a second");
+});
+
+test("range duration measures elapsed time across daylight-saving changes", () => {
+  expect(
+    formatRangeDuration({
+      from: Date.parse("2026-10-24T22:27:43+02:00"),
+      to: Date.parse("2026-10-25T09:36:19+01:00"),
+    }),
+  ).toBe("12 hours, 8 minutes, 36 seconds");
+});
 
 test("accepts presets and round-trips exact epoch millisecond ranges", () => {
   expect(parseTimeRange(new URLSearchParams())).toBe("1h");

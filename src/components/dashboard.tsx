@@ -31,7 +31,7 @@ import { MetricChart } from "@/components/metric-chart";
 import { ProcessChart } from "@/components/process-chart";
 import { bytes, duration, pct, rate } from "@/lib/format";
 import { type DashboardData, type TimeRange } from "@/lib/metrics";
-import { timeRangeQuery } from "@/lib/time-range";
+import { formatRangeDuration, timeRangeQuery } from "@/lib/time-range";
 
 const primaryChart = "var(--chart-1)";
 const secondaryChart = "var(--chart-2)";
@@ -828,7 +828,8 @@ export function Dashboard() {
           {typeof range !== "string" && (
             <p role="status" className="font-mono tabular-nums">
               {new Date(range.from).toLocaleString()} —{" "}
-              {new Date(range.to).toLocaleString()} (local time)
+              {new Date(range.to).toLocaleString()} (local time) ·{" "}
+              {formatRangeDuration(range)}
             </p>
           )}
         </div>

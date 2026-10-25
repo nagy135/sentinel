@@ -1,5 +1,22 @@
 import { isRange, type AbsoluteRange, type TimeRange } from "./metrics";
 
+export function formatRangeDuration({ from, to }: AbsoluteRange): string {
+  let seconds = Math.floor((to - from) / 1000);
+  if (seconds < 1) return "less than a second";
+  const parts: string[] = [];
+  for (const [unit, size] of [
+    ["day", 86400],
+    ["hour", 3600],
+    ["minute", 60],
+    ["second", 1],
+  ] as const) {
+    const count = Math.floor(seconds / size);
+    if (count) parts.push(`${count} ${unit}${count === 1 ? "" : "s"}`);
+    seconds %= size;
+  }
+  return parts.join(", ");
+}
+
 export function validateAbsoluteRange(from: number, to: number): AbsoluteRange {
   if (
     ![from, to].every(
