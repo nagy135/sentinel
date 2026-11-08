@@ -72,7 +72,24 @@ export class MetricsStore {
       for (const name of ["load1", "load5", "load15", "temperature"])
         if (!columns.has(name))
           this.db.exec(`ALTER TABLE samples ADD COLUMN ${name} REAL`);
-      this.db.exec("PRAGMA user_version = 4");
+      // Cover chart queries without fetching the much larger snapshot JSON pages.
+      this.db.exec(`CREATE INDEX IF NOT EXISTS samples_chart ON samples(
+        timestamp, cpu, memory, disk, rx, tx, load1, load5, load15, temperature
+      )`);
+      const version = this.db.query<{ user_version: number }, []>("PRAGMA user_version").get()!.user_version;
+      this.db.exec(`CREATE TABLE IF NOT EXISTS process_minutes (
+        timestamp INTEGER NOT NULL, process_id TEXT NOT NULL,
+        cpu REAL, memory REAL, cpu_count INTEGER NOT NULL, memory_count INTEGER NOT NULL,
+        PRIMARY KEY (timestamp, process_id)
+      ) WITHOUT ROWID`);
+      if (version < 5) {
+        this.db.exec(`INSERT INTO process_minutes
+          SELECT CAST(s.timestamp / 60000 AS INTEGER) * 60000, r.process_id,
+            MAX(r.cpu), MAX(r.memory), COUNT(r.cpu), COUNT(r.memory)
+          FROM samples s INDEXED BY samples_timestamp CROSS JOIN process_samples r ON r.sample_id = s.id
+          GROUP BY 1, r.process_id`);
+      }
+      this.db.exec("PRAGMA user_version = 5");
     })();
   }
 
@@ -106,6 +123,12 @@ export class MetricsStore {
       const reading = this.db.query(
         "INSERT INTO process_samples (sample_id, process_id, cpu, memory) VALUES (?, ?, ?, ?)",
       );
+      const minute = this.db.query(`INSERT INTO process_minutes
+        VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(timestamp, process_id) DO UPDATE SET
+        cpu = CASE WHEN excluded.cpu IS NULL THEN cpu WHEN cpu IS NULL THEN excluded.cpu ELSE MAX(cpu, excluded.cpu) END,
+        memory = CASE WHEN excluded.memory IS NULL THEN memory WHEN memory IS NULL THEN excluded.memory ELSE MAX(memory, excluded.memory) END,
+        cpu_count = cpu_count + excluded.cpu_count,
+        memory_count = memory_count + excluded.memory_count`);
       for (const process of sample.processes ?? []) {
         identity.run(process.id, process.pid, process.name);
         reading.run(
@@ -114,6 +137,8 @@ export class MetricsStore {
           process.cpu,
           process.memory,
         );
+        minute.run(Math.floor(sample.timestamp / 60000) * 60000, process.id,
+          process.cpu, process.memory, Number(process.cpu !== null), Number(process.memory !== null));
       }
     })();
   }
@@ -158,23 +183,42 @@ export class MetricsStore {
       }
       started = performance.now();
     };
-    const bucketMs = Math.max(
-      1,
-      Math.ceil((window.to - window.from + 1) / 360),
-    );
+    const useMinutes = window.to - window.from >= 6 * 3600_000;
+    const resolution = useMinutes ? 60000 : 1;
+    const bucketMs = Math.max(resolution,
+      Math.ceil((window.to - window.from + 1) / 360 / resolution) * resolution);
+    // Only complete minutes use aggregates. Read both partial boundary minutes
+    // from raw data so zoom/range boundaries retain exact peaks and coverage.
+    const fullFrom = Math.ceil(window.from / 60000) * 60000;
+    const fullTo = Math.floor((window.to + 1) / 60000) * 60000;
+    const readings = useMinutes ? `
+      SELECT timestamp, process_id, cpu, memory, cpu_count, memory_count
+      FROM process_minutes WHERE timestamp >= ${fullFrom} AND timestamp < ${fullTo}
+      UNION ALL
+      SELECT s.timestamp, r.process_id, r.cpu, r.memory,
+        r.cpu IS NOT NULL, r.memory IS NOT NULL
+      FROM samples s INDEXED BY samples_timestamp CROSS JOIN process_samples r ON r.sample_id = s.id
+      WHERE s.timestamp >= ${window.from} AND s.timestamp < ${fullFrom}
+      UNION ALL
+      SELECT s.timestamp, r.process_id, r.cpu, r.memory,
+        r.cpu IS NOT NULL, r.memory IS NOT NULL
+      FROM samples s INDEXED BY samples_timestamp CROSS JOIN process_samples r ON r.sample_id = s.id
+      WHERE s.timestamp >= ${fullTo} AND s.timestamp <= ${window.to}
+    ` : `SELECT s.timestamp, r.process_id, r.cpu, r.memory,
+        r.cpu IS NOT NULL AS cpu_count, r.memory IS NOT NULL AS memory_count
+      FROM samples s INDEXED BY samples_timestamp CROSS JOIN process_samples r ON r.sample_id = s.id
+      WHERE s.timestamp >= ${window.from} AND s.timestamp <= ${window.to}`;
     // Aggregate both metrics before looking up process names and PIDs, so each
     // retained reading is scanned once and identity lookups happen per process.
     const ranked = this.db
       .query<
         ProcessHistory["series"][number] & { metric: "cpu" | "memory" },
-        [number, number]
+        []
       >(
         `
-      WITH peaks AS MATERIALIZED (
+      WITH readings AS (${readings}), peaks AS MATERIALIZED (
         SELECT r.process_id AS id, MAX(r.cpu) AS cpu, MAX(r.memory) AS memory
-        FROM samples s JOIN process_samples r ON r.sample_id = s.id
-        WHERE s.timestamp >= ? AND s.timestamp <= ?
-        GROUP BY r.process_id
+        FROM readings r GROUP BY r.process_id
       )
       SELECT 'cpu' AS metric, id, pid, name, peak FROM (
         SELECT p.id, p.pid, p.name, t.cpu AS peak FROM peaks t
@@ -188,7 +232,7 @@ export class MetricsStore {
       )
     `,
       )
-      .all(window.from, window.to);
+      .all();
     mark("processRanking", ranked.length);
     const series: Record<"cpu" | "memory", ProcessHistory["series"]> = {
       cpu: [],
@@ -236,16 +280,15 @@ export class MetricsStore {
         (number | string)[]
       >(
         `
-      SELECT CAST(s.timestamp / ? AS INTEGER) AS bucket, r.process_id AS id,
-        MAX(r.cpu) AS cpu, COUNT(r.cpu) AS cpuCoverage,
-        MAX(r.memory) AS memory, COUNT(r.memory) AS memoryCoverage
-      FROM samples s JOIN process_samples r ON r.sample_id = s.id
-      WHERE s.timestamp >= ? AND s.timestamp <= ?
-        AND r.process_id IN (${ids.map(() => "?").join(",")})
+      WITH readings AS (${readings})
+      SELECT CAST(r.timestamp / ? AS INTEGER) AS bucket, r.process_id AS id,
+        MAX(r.cpu) AS cpu, SUM(r.cpu_count) AS cpuCoverage,
+        MAX(r.memory) AS memory, SUM(r.memory_count) AS memoryCoverage
+      FROM readings r WHERE r.process_id IN (${ids.map(() => "?").join(",")})
       GROUP BY bucket, r.process_id
     `,
       )
-      .all(bucketMs, window.from, window.to, ...ids);
+      .all(bucketMs, ...ids);
     mark("processReadings", rows.length);
     const values = new Map(rows.map((r) => [`${r.bucket}:${r.id}`, r]));
     const build = (metric: "cpu" | "memory"): ProcessHistory => {
@@ -291,7 +334,9 @@ export class MetricsStore {
       .query<
         { count: number; first: number | null; last: number | null },
         []
-      >("SELECT COUNT(*) AS count, MIN(timestamp) AS first, MAX(timestamp) AS last FROM samples")
+      >(`SELECT (SELECT COUNT(*) FROM samples INDEXED BY samples_timestamp) AS count,
+        (SELECT timestamp FROM samples ORDER BY timestamp LIMIT 1) AS first,
+        (SELECT timestamp FROM samples ORDER BY timestamp DESC LIMIT 1) AS last`)
       .get()!;
     const bytes =
       this.path === ":memory:"
@@ -332,7 +377,7 @@ export class MetricsStore {
         AVG(rx) AS rx, AVG(tx) AS tx,
         AVG(load1) AS load1, AVG(load5) AS load5, AVG(load15) AS load15,
         AVG(temperature) AS temperature
-      FROM samples WHERE timestamp >= ? AND timestamp <= ?
+      FROM samples INDEXED BY samples_chart WHERE timestamp >= ? AND timestamp <= ?
       GROUP BY CAST(timestamp / ? AS INTEGER) ORDER BY timestamp
     `,
       )
@@ -484,7 +529,7 @@ export class MetricsStore {
       .query<BusyProcess, [number, number]>(
         `
       SELECT p.id, p.pid, p.name, MAX(r.cpu) AS peakCpu, COUNT(r.cpu) AS observations
-      FROM samples s JOIN process_samples r ON r.sample_id = s.id
+      FROM samples s INDEXED BY samples_timestamp CROSS JOIN process_samples r ON r.sample_id = s.id
       JOIN processes p ON p.id = r.process_id
       WHERE s.timestamp >= ? AND s.timestamp <= ? AND r.cpu > 0
       GROUP BY p.id ORDER BY peakCpu DESC, p.pid, p.id LIMIT 5

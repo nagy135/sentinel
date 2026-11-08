@@ -166,3 +166,27 @@ describe("SQLite metric history", () => {
     expect(store.summary().count).toBe(1000);
   });
 });
+
+test("backfills existing process history once and maintains aggregates after restart", () => {
+  const directory = mkdtempSync(join(tmpdir(), "sentinel-rollup-"));
+  directories.push(directory);
+  const path = join(directory, "history.sqlite");
+  const original = new MetricsStore(path);
+  const process = { id: "boot:1:1", pid: 1, name: "worker", cpu: 90, memory: 20 };
+  original.insert({ ...sample(60_000), processes: [process] });
+  original.close();
+  const legacy = new Database(path);
+  legacy.exec("DROP TABLE process_minutes; DROP INDEX samples_chart; PRAGMA user_version = 4;");
+  legacy.close();
+  const upgraded = new MetricsStore(path);
+  upgraded.insert({ ...sample(65_000), processes: [{ ...process, cpu: null }] });
+  const expected = upgraded.processHistories({ from: 0, to: 7 * 86400_000 }, 5000);
+  expect(expected.cpu.series[0]?.peak).toBe(90);
+  expect(expected.cpu.points.reduce((n, p) => n + p.coverage[0]!, 0)).toBe(1);
+  expect(expected.memory.points.reduce((n, p) => n + p.coverage[0]!, 0)).toBe(2);
+  upgraded.close();
+  const reopened = new MetricsStore(path);
+  stores.push(reopened);
+  expect(reopened.processHistories({ from: 0, to: 7 * 86400_000 }, 5000)).toEqual(expected);
+  expect(reopened.summary().count).toBe(2);
+});
