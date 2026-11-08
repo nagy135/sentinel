@@ -89,7 +89,18 @@ export class MetricsStore {
           FROM samples s INDEXED BY samples_timestamp CROSS JOIN process_samples r ON r.sample_id = s.id
           GROUP BY 1, r.process_id`);
       }
-      this.db.exec("PRAGMA user_version = 5");
+      this.db.exec(`CREATE TABLE IF NOT EXISTS process_quarters (
+        timestamp INTEGER NOT NULL, process_id TEXT NOT NULL,
+        cpu REAL, memory REAL, cpu_count INTEGER NOT NULL, memory_count INTEGER NOT NULL,
+        PRIMARY KEY (timestamp, process_id)
+      ) WITHOUT ROWID`);
+      if (version < 6) {
+        this.db.exec(`INSERT INTO process_quarters
+          SELECT CAST(timestamp / 900000 AS INTEGER) * 900000, process_id,
+            MAX(cpu), MAX(memory), SUM(cpu_count), SUM(memory_count)
+          FROM process_minutes GROUP BY 1, process_id`);
+      }
+      this.db.exec("PRAGMA user_version = 6");
     })();
   }
 
@@ -123,12 +134,14 @@ export class MetricsStore {
       const reading = this.db.query(
         "INSERT INTO process_samples (sample_id, process_id, cpu, memory) VALUES (?, ?, ?, ?)",
       );
-      const minute = this.db.query(`INSERT INTO process_minutes
+      const aggregateSql = (table: string) => `INSERT INTO ${table}
         VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(timestamp, process_id) DO UPDATE SET
         cpu = CASE WHEN excluded.cpu IS NULL THEN cpu WHEN cpu IS NULL THEN excluded.cpu ELSE MAX(cpu, excluded.cpu) END,
         memory = CASE WHEN excluded.memory IS NULL THEN memory WHEN memory IS NULL THEN excluded.memory ELSE MAX(memory, excluded.memory) END,
         cpu_count = cpu_count + excluded.cpu_count,
-        memory_count = memory_count + excluded.memory_count`);
+        memory_count = memory_count + excluded.memory_count`;
+      const minute = this.db.query(aggregateSql("process_minutes"));
+      const quarter = this.db.query(aggregateSql("process_quarters"));
       for (const process of sample.processes ?? []) {
         identity.run(process.id, process.pid, process.name);
         reading.run(
@@ -138,6 +151,8 @@ export class MetricsStore {
           process.memory,
         );
         minute.run(Math.floor(sample.timestamp / 60000) * 60000, process.id,
+          process.cpu, process.memory, Number(process.cpu !== null), Number(process.memory !== null));
+        quarter.run(Math.floor(sample.timestamp / 900000) * 900000, process.id,
           process.cpu, process.memory, Number(process.cpu !== null), Number(process.memory !== null));
       }
     })();
@@ -184,16 +199,18 @@ export class MetricsStore {
       started = performance.now();
     };
     const useMinutes = window.to - window.from >= 6 * 3600_000;
-    const resolution = useMinutes ? 60000 : 1;
+    const aggregateMs = window.to - window.from >= 3 * 86400_000 ? 900000 : 60000;
+    const aggregateTable = aggregateMs === 900000 ? "process_quarters" : "process_minutes";
+    const resolution = useMinutes ? aggregateMs : 1;
     const bucketMs = Math.max(resolution,
       Math.ceil((window.to - window.from + 1) / 360 / resolution) * resolution);
-    // Only complete minutes use aggregates. Read both partial boundary minutes
+    // Only complete aggregate intervals use rollups. Read partial boundaries
     // from raw data so zoom/range boundaries retain exact peaks and coverage.
-    const fullFrom = Math.ceil(window.from / 60000) * 60000;
-    const fullTo = Math.floor((window.to + 1) / 60000) * 60000;
+    const fullFrom = Math.ceil(window.from / aggregateMs) * aggregateMs;
+    const fullTo = Math.floor((window.to + 1) / aggregateMs) * aggregateMs;
     const readings = useMinutes ? `
       SELECT timestamp, process_id, cpu, memory, cpu_count, memory_count
-      FROM process_minutes WHERE timestamp >= ${fullFrom} AND timestamp < ${fullTo}
+      FROM ${aggregateTable} WHERE timestamp >= ${fullFrom} AND timestamp < ${fullTo}
       UNION ALL
       SELECT s.timestamp, r.process_id, r.cpu, r.memory,
         r.cpu IS NOT NULL, r.memory IS NOT NULL

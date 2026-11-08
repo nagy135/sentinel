@@ -247,15 +247,15 @@ test("breaks equal peaks by PID then process identity for both top-five lists", 
     ]);
 });
 
-test("long ranges retain exact boundary peaks and coverage with minute aggregates", () => {
+test.each([6 * 3600_000, 7 * 86400_000])("long ranges retain exact boundary peaks and coverage (%i ms)", (duration) => {
   const db = store();
   const from = 10_000;
-  const to = 6 * 3600_000 + from;
+  const to = duration + from;
   db.insert(sample(0, [process(99, 1000)])); // excluded partial first minute
   db.insert(sample(from, [process(1, 10, null)]));
-  db.insert(sample(60_000, [process(1, 80, 5)]));
-  db.insert(sample(65_000, [process(1, null, 0)]));
-  db.insert(sample(70_000, [process(1, 0, null)]));
+  db.insert(sample(3_600_000, [process(1, 80, 5)]));
+  db.insert(sample(3_605_000, [process(1, null, 0)]));
+  db.insert(sample(3_610_000, [process(1, 0, null)]));
   db.insert(sample(to, [process(2, 90, 10)]));
   db.insert(sample(to + 1, [process(99, 1000)])); // excluded partial last minute
   const { cpu, memory } = db.processHistories({ from, to }, 5000);

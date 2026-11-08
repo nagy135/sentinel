@@ -176,7 +176,7 @@ test("backfills existing process history once and maintains aggregates after res
   original.insert({ ...sample(60_000), processes: [process] });
   original.close();
   const legacy = new Database(path);
-  legacy.exec("DROP TABLE process_minutes; DROP INDEX samples_chart; PRAGMA user_version = 4;");
+  legacy.exec("DROP TABLE process_minutes; DROP TABLE process_quarters; DROP INDEX samples_chart; PRAGMA user_version = 4;");
   legacy.close();
   const upgraded = new MetricsStore(path);
   upgraded.insert({ ...sample(65_000), processes: [{ ...process, cpu: null }] });
